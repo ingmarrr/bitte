@@ -127,7 +127,6 @@ $mainContent = 'fn main() {
 }'
 
 [structure]
-
 src { main.rs: $mainContent },
 Cargo.toml
 ```
@@ -155,7 +154,6 @@ edition = "2021"
 [dependencies]'
 
 [structure]
-
 src {
     math {
         add.rs: $addContent,
