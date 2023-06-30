@@ -3,7 +3,14 @@ name = "bitte"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[[bin]]
+name = "bitte"
+path = "src/main.rs"
+
+[[bin]]
+name = "repl"
+path = "src/repl.rs"
 
 [dependencies]
 clap = { version = "4.3.8", features = ["derive", "env"] }
+thiserror = "1.0.40"
