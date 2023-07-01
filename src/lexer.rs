@@ -13,6 +13,7 @@ pub enum LexError {
 pub struct Lexer<'a> {
     input: std::iter::Peekable<Chars<'a>>,
     char: char,
+    inserting: usize,
 }
 
 impl<'a> Lexer<'a> {
@@ -20,6 +21,7 @@ impl<'a> Lexer<'a> {
         let mut lex = Lexer {
             input: input.chars().peekable(),
             char: '\0',
+            inserting: 0,
         };
         lex.read_char();
         lex
@@ -47,7 +49,7 @@ impl<'a> Lexer<'a> {
         self.input.next();
     }
 
-    fn peek_char(&mut self) -> char {
+    fn __peek_char(&mut self) -> char {
         match self.input.peek() {
             Some(ch) => *ch,
             None => '\0',
@@ -66,7 +68,18 @@ impl<'a> Lexer<'a> {
     fn read_str(&mut self) -> String {
         let mut buf = String::new();
         self.read_char();
-        while self.char != '\'' {
+        self.inserting += 1;
+        loop {
+            match self.char {
+                '\'' => match self.inserting {
+                    0 => break,
+                    _ => self.inserting -= 1,
+                },
+                '#' | '!' => {
+                    self.inserting += 1;
+                }
+                _ => {}
+            };
             buf.push(self.char);
             self.read_char();
         }
@@ -74,7 +87,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn skip_ws(&mut self) {
-        while let ' ' | '\t' | '\n' | '\r' = self.char {
+        while self.char.is_whitespace() {
             self.read_char();
         }
     }

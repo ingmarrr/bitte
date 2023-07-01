@@ -12,7 +12,7 @@ pub enum Def {
     Let {
         ty: Type,
         ident: String,
-        val: String,
+        val: Value,
     },
     Elem {
         ident: String,
@@ -31,10 +31,58 @@ pub enum Def {
 }
 
 #[derive(Debug)]
-pub struct Format {
-    body: String,
-    insertions: Vec<String>,
+pub enum Value {
+    String {
+        body: String,
+        insertions: Vec<Insertion>,
+    },
+    List {
+        content: Vec<String>,
+    },
+    ListStr {
+        ident: ListIdent,
+        body: String,
+        insertions: Vec<Insertion>,
+    },
+    Element {
+        ident: String,
+        inputs: Vec<String>,
+    },
 }
+
+#[derive(Debug)]
+pub enum Insertion {
+    Ident(String),
+    Value(Value),
+    Empty
+}
+
+#[derive(Debug)]
+pub enum ListIdent {
+    Anonymos(Vec<String>),
+    Name(String)
+}
+
+impl From<&str> for Insertion {
+    fn from(value: &str) -> Self {
+        match value {
+            "" => Self::Empty,
+            _ => Self::Ident(value.to_owned()),
+        }
+    }
+}
+
+impl From<String> for Insertion {
+    fn from(value: String) -> Self {
+        match value.as_str() {
+            "" => Self::Empty,
+            _ => Self::Ident(value),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Format;
 
 #[derive(Debug)]
 pub struct Param {
