@@ -1,3 +1,6 @@
+use std::iter::Peekable;
+use std::str::Chars;
+
 use crate::ast::{Def, Insertion, ListIdent, Program, Type, Value};
 use crate::lexer::Lexer;
 use crate::token::Token;
@@ -74,11 +77,13 @@ impl<'a> Parser<'a> {
             return None;
         }
 
+        println!("Found: {:#?}", self.tok);
         self.next_token();
-        let value = match self.tok {
+        println!("Found: {:#?}", self.tok);
+        let value = match self.tok.clone() {
             Token::Pound => self.parse_list_str(),
             Token::Bang => self.parse_element(),
-            Token::SQuote => self.parse_str(),
+            Token::String(body) => self.parse_str_body(&body),
             Token::RSquare => todo!(),
             _ => {
                 self.push_err(vec!["#", "$", "'"]);
@@ -86,6 +91,7 @@ impl<'a> Parser<'a> {
             }
         };
 
+        println!("{:#?}", value);
         match value {
             Some(val) => Some(Def::Let { ty, ident, val }),
             None => None,
@@ -132,6 +138,7 @@ impl<'a> Parser<'a> {
 
     fn parse_str(&mut self) -> Option<Value> {
         self.next_token();
+        println!("Got here: {:#?}", self.tok);
         if let Token::SQuote = self.tok {
             return Some(Value::String {
                 body: String::new(),
@@ -139,12 +146,48 @@ impl<'a> Parser<'a> {
             });
         }
 
+        println!("token: {:#?}", self.tok);
         if let Token::Ident(body) = self.tok.clone() {
+            println!("Found body: {body}");
             return self.parse_str_body(&body);
         }
 
         self.push_err(vec!["string"]);
         None
+    }
+
+    fn parse_cons_alphanum(&self, chs: &mut Peekable<Chars>) -> String {
+        let mut cons_chars = String::new();
+        while let Some(&c) = chs.peek() {
+            if c.is_alphanumeric() || c == '_' {
+                cons_chars.push(c);
+                chs.next();
+            } else {
+                break;
+            }
+        }
+        cons_chars
+    }
+
+    fn parse_list(&self, chs: &mut Peekable<Chars>) -> Vec<String> {
+        let mut buf = String::new();
+        while let Some(&c) = chs.peek() {
+            match c {
+                '\'' => {
+                    buf.push_str(&self.parse_cons_alphanum(chs));
+                    chs.next();
+                }
+                ' ' => {
+                    chs.next();
+                }
+                ']' => break,
+                _ => buf.push(c),
+            };
+            chs.next();
+        }
+        buf.split(',')
+            .map(|s| s.to_owned())
+            .collect::<Vec<String>>()
     }
 
     fn parse_str_body(&mut self, body: &str) -> Option<Value> {
@@ -158,11 +201,8 @@ impl<'a> Parser<'a> {
                     match Token::from(ch) {
                         Token::Dollar => match peeked {
                             Some(peek) if peek.is_alphabetic() => {
-                                let mut ident = String::new();
-                                while ch.is_alphanumeric() || ch == '_' {
-                                    ident.push(ch);
-                                    chs.next();
-                                }
+                                let ident = self.parse_cons_alphanum(&mut chs);
+                                println!("Ident: {}", ident);
                                 _insertions.push(Insertion::Ident(ident));
                             }
                             _ => _insertions.push(Insertion::Empty),
@@ -170,16 +210,7 @@ impl<'a> Parser<'a> {
                         Token::Bang => {}
                         Token::Pound => match peeked {
                             Some(peek) if peek.is_alphabetic() => {
-                                let mut ident = String::new();
-
-                                while let Some(&c) = chs.peek() {
-                                    if c.is_alphanumeric() || c == '_' {
-                                        ident.push(c);
-                                        chs.next();
-                                    } else {
-                                        break;
-                                    }
-                                }
+                                let ident = self.parse_cons_alphanum(&mut chs);
                                 if let Some('{') = chs.next() {
                                     let body = match chs.next() {
                                         Some('\'') => {
@@ -231,6 +262,7 @@ impl<'a> Parser<'a> {
                                 }
                             }
                             Some(peek) if peek == &'[' => {
+                                println!("Found anonymos list");
                                 let mut list_buf = String::new();
                                 while ch != ']' {
                                     list_buf.push(ch);

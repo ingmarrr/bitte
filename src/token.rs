@@ -1,6 +1,7 @@
 #[derive(PartialEq, Clone, Debug)]
 pub enum Token {
     Ident(String),
+    String(String),
 
     Dollar,
     Bang,
@@ -30,6 +31,7 @@ impl std::fmt::Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Token::Ident(ident) => f.write_fmt(format_args!("Ident({})", ident)),
+            Token::String(s) => f.write_fmt(format_args!("String({})", s)),
             Token::Dollar => f.write_str("Dollar"),
             Token::Bang => f.write_str("Bang"),
             Token::Pound => f.write_str("Pound"),

@@ -54,13 +54,13 @@ pub enum Value {
 pub enum Insertion {
     Ident(String),
     Value(Value),
-    Empty
+    Empty,
 }
 
 #[derive(Debug)]
 pub enum ListIdent {
     Anonymos(Vec<String>),
-    Name(String)
+    Name(String),
 }
 
 impl From<&str> for Insertion {
@@ -86,8 +86,8 @@ pub struct Format;
 
 #[derive(Debug)]
 pub struct Param {
-    ty: Type,
-    ident: String,
+    _ty: Type,
+    _ident: String,
 }
 
 #[derive(Debug)]

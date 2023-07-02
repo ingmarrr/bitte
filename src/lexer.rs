@@ -34,7 +34,7 @@ impl<'a> Lexer<'a> {
                 let ident = self.read_ident();
                 return Token::from(ident);
             }
-            '\'' => Token::Ident(self.read_str()),
+            '\'' => Token::String(self.read_str()),
             _ => Token::from(self.char),
         };
         self.read_char();
@@ -72,7 +72,7 @@ impl<'a> Lexer<'a> {
         loop {
             match self.char {
                 '\'' => match self.inserting {
-                    0 => break,
+                    1 => break,
                     _ => self.inserting -= 1,
                 },
                 '#' | '!' => {
