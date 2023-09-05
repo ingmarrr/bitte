@@ -1,144 +1,104 @@
-
+use crate::err::LexError;
 
 #[derive(Debug, PartialEq)]
-pub enum Token {
-    String(String),
+pub enum Tok {
+    String { body: String, inserts: Vec<Tok> },
+    Insert { kw: InsertKw, start: usize },
     Ident(String),
-    Alpha(char),
-    Num(char),
-    NonAlphaNum(char),
+    Char(char),
 
-    Let,
-    Struct,
-    Elem,
-    Optional,
-    Required,
+    SQ,
+    DQ,
+
+    LBrace,
+    RBrace,
+    LBracket,
+    RBracket,
+    LParen,
+    RParen,
 
     Eq,
-    LCurly,
-    RCurly,
-    LSquare,
-    RSquare,
-    Colon,
-    Comma,
+    Plus,
 
-    SQuote,
-    Bang,
-    At,
-    Pound,
-    Dollar,
+    Req,
+    Opt,
 
-    Escape,
-    Newline,
-    Whitespace,
-    Eof,
-    Illegal
+    Struct,
+    Let,
+    For,
+    Invalid,
 }
 
 #[derive(Debug, PartialEq)]
-pub enum CharToken {
-    Eq,
-    LCurly,
-    RCurly,
-    LSquare,
-    RSquare,
-    Colon,
-    Comma,
-
-    SQuote,
-    Bang,
-    At,
-    Pound,
-    Dollar,
-
-    Illegal,
+pub enum InsertKw {
+    For { name: String, fmt: Box<Tok> },
+    Some(String),
+    Number(usize),
+    None,
 }
 
-
-impl From<char> for Token {
+impl Tok {
+    pub fn is_init(&self) -> bool {
+        match self {
+            Tok::SQ | Tok::DQ | Tok::LBrace | Tok::LBracket | Tok::LParen | Tok::Char(_) => true,
+            _ => false,
+        }
+    }
+}
+impl From<char> for Tok {
     fn from(value: char) -> Self {
         match value {
-            '\'' => Token::SQuote,
-            '!' => Token::Bang,
-            '@' => Token::At,
-            '#' => Token::Pound,
-            '$' => Token::Dollar,
-            '=' => Token::Eq,
-            '{' => Token::LCurly,
-            '}' => Token::RCurly,
-            '[' => Token::LSquare,
-            ']' => Token::RSquare,
-            ':' => Token::Colon,
-            ',' => Token::Comma,
-            '\\' => Token::Escape,
-            '\n' => Token::Newline,
-            ' ' | '\t' | '\r' => Token::Whitespace,
-            '\0' => Token::Eof,
-            _ if value.to_string().parse::<usize>().is_ok() => Token::Num(value),
-            _ if value.is_alphabetic() => Token::Alpha(value),
-            _ => Token::NonAlphaNum(value),
+            '\'' => Tok::SQ,
+            '"' => Tok::DQ,
+            '{' => Tok::LBrace,
+            '}' => Tok::RBrace,
+            '[' => Tok::LBracket,
+            ']' => Tok::RBracket,
+            '(' => Tok::LParen,
+            ')' => Tok::RParen,
+            '=' => Tok::Eq,
+            '+' => Tok::Plus,
+            '?' => Tok::Opt,
+            '!' => Tok::Req,
+            c if value.is_alphabetic() => Tok::Char(c),
+            _ => Tok::Invalid,
         }
     }
 }
 
-impl From<&str> for Token {
-    fn from(value: &str) -> Self {
+impl From<String> for Tok {
+    fn from(value: String) -> Self {
+        match value.as_str() {
+            "struct" => Tok::Struct,
+            "let" => Tok::Let,
+            "for" => Tok::For,
+            _ => Tok::Ident(value),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum InitTok {
+    SQ,
+    DQ,
+    LBrace,
+    LBracket,
+    LParen,
+    Char,
+}
+
+impl TryFrom<Tok> for InitTok {
+    type Error = LexError;
+
+    fn try_from(value: Tok) -> Result<Self, Self::Error> {
         match value {
-            "let" => Token::Let,
-            "struct" => Token::Struct,
-            "elem" => Token::Elem,
-            "opt" => Token::Optional,
-            "req" => Token::Required,
-            _ => Token::Ident(value.to_owned())
+            Tok::SQ => Ok(InitTok::SQ),
+            Tok::DQ => Ok(InitTok::DQ),
+            Tok::LBrace => Ok(InitTok::LBrace),
+            Tok::LBracket => Ok(InitTok::LBracket),
+            Tok::LParen => Ok(InitTok::LParen),
+            Tok::Char(_) => Ok(InitTok::Char),
+            _ => Err(LexError::NotInit),
         }
     }
 }
-
-
-impl Token {
-    pub fn is_injector(&self) -> bool {
-        match self {
-            Self::Bang | Self::Pound | Self::Dollar => true,
-            _ => false
-        }
-    }
-
-    pub fn is_alphanum(&self) -> bool {
-        match self {
-            Self::Alpha(_) | Self::Num(_) => true,
-            _ => false
-        }
-    }
-
-    pub fn is_whitespace(&self) -> bool {
-        match self {
-            Self::Whitespace | Self::Newline => true,
-            _ => false
-        }
-    }
-}
-
-pub enum Injector {
-    Bang,
-    Dollar,
-    Pound,
-}
-
-impl Into<Token> for Injector {
-    fn into(self) -> Token {
-        match self {
-            Self::Bang => Token::Bang,
-            Self::Dollar => Token::Dollar,
-            Self::Pound => Token::Pound,
-        }
-    }
-}
-
-
-
-
-
-
-
-
-

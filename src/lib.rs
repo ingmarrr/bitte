@@ -1,5 +1,6 @@
 pub mod ast;
-// pub mod errors;
-pub mod lexer;
-pub mod parser;
+pub mod err;
+pub mod lex;
+#[macro_use]
+pub mod log;
 pub mod token;
