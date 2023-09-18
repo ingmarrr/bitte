@@ -1,7 +1,7 @@
 use crate::{
     err::LexError,
     error, info, log,
-    token::{InsertKw, Tok},
+    token::{InsertKw, Tok, TokKind},
 };
 
 #[derive(Clone)]
@@ -32,12 +32,45 @@ impl Lex {
         }
     }
 
+    pub fn assert_look_ahead(&mut self, expected: Tok) -> Result<Tok, LexError> {
+        if let Some(cx) = &self.tmpcx {
+            self.cx = cx.clone();
+            self.tmpcx = None;
+        }
+        let tok = self.lx_tok()?;
+        if tok != expected {
+            return Err(LexError::Expected {
+                line: self.cx.line,
+                col: self.cx.col,
+                expected: expected.to_string(),
+                found: tok.to_string(),
+            });
+        }
+        Ok(tok)
+    }
+
     pub fn look_ahead(&mut self) -> Result<Tok, LexError> {
         if let Some(cx) = &self.tmpcx {
             self.cx = cx.clone();
             self.tmpcx = None;
         }
         self.lx_tok()
+    }
+
+    pub fn assert_next_token(&mut self, expected: TokKind) -> Result<Tok, LexError> {
+        if let None = self.tmpcx {
+            self.tmpcx = Some(self.cx.clone());
+        }
+        let tok = self.lx_tok()?;
+        if tok != expected {
+            return Err(LexError::Expected {
+                line: self.cx.line,
+                col: self.cx.col,
+                expected: expected.to_string(),
+                found: tok.to_string(),
+            });
+        }
+        Ok(tok)
     }
 
     pub fn next_token(&mut self) -> Result<Tok, LexError> {
@@ -110,20 +143,6 @@ impl Lex {
                 self.take();
                 return Ok(Tok::Insert {
                     kw: InsertKw::None,
-                    start,
-                });
-            }
-            Some(n) if n.is_digit(10) => {
-                let mut num = String::new();
-                while let Some(n) = self.peek() {
-                    if !n.is_digit(10) {
-                        break;
-                    }
-                    num.push(n);
-                    self.take();
-                }
-                return Ok(Tok::Insert {
-                    kw: InsertKw::Number(num.parse().unwrap()),
                     start,
                 });
             }
@@ -206,6 +225,10 @@ impl Lex {
                     buf.push(c);
                     self.take();
                 }
+                Some('_') => {
+                    buf.push('_');
+                    self.take();
+                }
                 _ => {
                     info!("LX_IDENT :: {}", buf);
                     return Ok(Tok::from(buf));
@@ -286,7 +309,7 @@ mod test {
         Ok(Tok::String {
             body: "hello ".to_string(),
             inserts: vec![Tok::Insert {
-                kw: InsertKw::Some("world".to_string()),
+                kw: InsertKw::Some("world".to_owned().into_boxed_str()),
                 start: 8
             }]
         })
@@ -320,7 +343,7 @@ mod test {
             body: "hello ".to_string(),
             inserts: vec![Tok::Insert {
                 kw: InsertKw::For {
-                    name: "world".to_string(),
+                    name: "world".to_owned().into_boxed_str(),
                     fmt: Box::new(Tok::String {
                         body: "there, ".to_string(),
                         inserts: vec![Tok::Insert {
@@ -334,8 +357,13 @@ mod test {
         })
     );
     lex_test!(lex_struct, "struct", Ok(Tok::Struct));
+    lex_test!(lex_fun, "fmt", Ok(Tok::Fmt));
     lex_test!(lex_let, "let", Ok(Tok::Let));
-    lex_test!(lex_ident, "hello", Ok(Tok::Ident("hello".to_string())));
+    lex_test!(
+        lex_ident,
+        "hello",
+        Ok(Tok::Ident("hello".to_owned().into_boxed_str()))
+    );
 
     #[test]
     fn lex_symbols() {

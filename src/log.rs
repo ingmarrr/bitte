@@ -24,10 +24,10 @@ macro_rules! log {
     (LEX, $level:expr, $($arg:tt)+) => {
         println!("{} :: LEXING  :: {}", $level, format_args!($($arg)+));
     };
-    (PAR, $crate::log::Level:expr, $($arg:tt)+) => {
+    (PAR, $level:expr, $($arg:tt)+) => {
         println!("{} :: PARSING :: {}", $level, format_args!($($arg)+));
     };
-    (LA, $crate::log::Level:expr, $($arg:tt)+) => {
+    (LA, $level:expr, $($arg:tt)+) => {
         println!("{} :: PEEKED :: {}", $level, format_args!($($arg)+));
     };
     ($level:expr, $($arg:tt)+) => {

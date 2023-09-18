@@ -4,11 +4,7 @@ pub enum LexError {
     InvalidCharacter { line: usize, col: usize, ch: char },
 
     #[error("L: {line} | C: {col} :: Invalid token :: {tok}")]
-    InvalidToken {
-        line: usize,
-        col: usize,
-        tok: String,
-    },
+    InvalidToken { line: usize, col: usize, tok: String, },
 
     #[error("L: {line} | C: {col} :: Invalid insert keyword (expected `for` or valid identifier)")]
     InvalidInsertKeyword { line: usize, col: usize },
@@ -38,4 +34,31 @@ pub enum LexError {
 
     #[error("Not an initializer")]
     NotInit,
+}
+
+#[derive(Debug, thiserror::Error, PartialEq)]
+pub enum ParseError {
+    #[error("L: {line} | C: {col} :: Expected {expected} :: {found}")]
+    Expected {
+        line: usize,
+        col: usize,
+        expected: String,
+        found: String,
+    },
+
+    #[error("L: {line} | C: {col} :: Invalid type :: {ty}")]
+    InvalidType { line: usize, col: usize, ty: String },
+
+    #[error("L: {line} | C: {col} :: Invalid token :: {tok}")]
+    InvalidToken {
+        line: usize,
+        col: usize,
+        tok: String,
+    },
+
+    #[error("L: {line} | C: {col} :: Unexpected EOF")]
+    UnexpectedEOF { line: usize, col: usize },
+
+    #[error(transparent)]
+    LexError(#[from] LexError),
 }
