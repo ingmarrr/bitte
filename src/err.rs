@@ -4,7 +4,11 @@ pub enum LexError {
     InvalidCharacter { line: usize, col: usize, ch: char },
 
     #[error("L: {line} | C: {col} :: Invalid token :: {tok}")]
-    InvalidToken { line: usize, col: usize, tok: String, },
+    InvalidToken {
+        line: usize,
+        col: usize,
+        tok: String,
+    },
 
     #[error("L: {line} | C: {col} :: Invalid insert keyword (expected `for` or valid identifier)")]
     InvalidInsertKeyword { line: usize, col: usize },
@@ -61,4 +65,7 @@ pub enum ParseError {
 
     #[error(transparent)]
     LexError(#[from] LexError),
+
+    #[error("Unimplemented")]
+    Unimplemented,
 }

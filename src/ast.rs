@@ -1,5 +1,3 @@
-use crate::token::Tok;
-
 #[derive(Debug, PartialEq)]
 pub enum Stmt {
     Decl(Decl),
@@ -10,14 +8,14 @@ pub enum Stmt {
 pub enum Decl {
     Struct(Struct),
     Let {
-        name: String,
+        name: Box<str>,
         ty: Option<Ty>,
-        val: Expr,
+        expr: Expr,
     },
     Fmt {
         name: String,
         params: Vec<Param>,
-        body: LitStr,
+        body: Box<str>,
     },
 }
 
@@ -32,8 +30,18 @@ pub struct Struct {
 pub enum Expr {
     Ident(String),
     Lit(Lit),
-    StructInit { name: String, fields: Vec<Field> },
-    Fmt { name: String, args: Vec<Expr> },
+    StructInit {
+        name: String,
+        fields: Vec<Field>,
+    },
+    Fmt {
+        name: String,
+        args: Vec<Expr>,
+    },
+    Inserted {
+        string_parts: Vec<Box<str>>,
+        inserts: Vec<(usize, Insert)>,
+    },
 }
 
 #[derive(Debug, PartialEq)]
@@ -50,17 +58,30 @@ pub struct Param {
 
 #[derive(Debug, PartialEq)]
 pub enum Lit {
-    // TODO ! :: Add `Insert` to string
-    Str(LitStr),
+    Str(Box<str>),
     Char(char),
     Num(String),
-    List(Vec<Expr>),
+    List(List),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum List {
+    LitList(Vec<Box<str>>),
+    Ident(Box<str>),
 }
 
 #[derive(Debug, PartialEq)]
-pub struct LitStr {
-    pub body: String,
-    pub inserts: Vec<Tok>,
+pub enum Insert {
+    For {
+        expr: Box<Insert>,
+        item: Box<str>,
+        iter: List,
+    },
+    Ident(Box<str>),
+    Fmt {
+        name: Box<str>,
+        args: Vec<Expr>,
+    },
 }
 
 #[derive(Debug, PartialEq)]

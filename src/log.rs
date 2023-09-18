@@ -1,19 +1,39 @@
+#[derive(PartialEq, Eq)]
 pub enum Level {
     INFO,
     WARN,
     ERROR,
     TEST,
     DEBUG,
+    LEX,
+    PARSE,
+}
+
+impl Level {
+    pub fn from_str(s: &str) -> Option<Level> {
+        match s {
+            "INFO" => Some(Level::INFO),
+            "WARN" => Some(Level::WARN),
+            "ERROR" => Some(Level::ERROR),
+            "TEST" => Some(Level::TEST),
+            "DEBUG" => Some(Level::DEBUG),
+            "LEX" => Some(Level::LEX),
+            "PARSE" => Some(Level::PARSE),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Display for crate::log::Level {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let s = match self {
-            crate::log::Level::INFO => "INFO",
-            crate::log::Level::WARN => "WARN",
-            crate::log::Level::ERROR => "ERROR",
-            crate::log::Level::TEST => "TEST",
-            crate::log::Level::DEBUG => "DEBUG",
+            crate::log::Level::INFO => "info",
+            crate::log::Level::WARN => "warn",
+            crate::log::Level::ERROR => "error",
+            crate::log::Level::TEST => "test",
+            crate::log::Level::DEBUG => "debug",
+            crate::log::Level::LEX => "lex",
+            crate::log::Level::PARSE => "parse",
         };
         write!(f, "{}", s)
     }
@@ -21,96 +41,63 @@ impl std::fmt::Display for crate::log::Level {
 
 #[macro_export]
 macro_rules! log {
-    (LEX, $level:expr, $($arg:tt)+) => {
-        println!("{} :: LEXING  :: {}", $level, format_args!($($arg)+));
-    };
-    (PAR, $level:expr, $($arg:tt)+) => {
-        println!("{} :: PARSING :: {}", $level, format_args!($($arg)+));
-    };
-    (LA, $level:expr, $($arg:tt)+) => {
-        println!("{} :: PEEKED :: {}", $level, format_args!($($arg)+));
-    };
     ($level:expr, $($arg:tt)+) => {
-        println!("{} :: {}", $level, format_args!($($arg)+));
+        println!("[{}] :: {}", $level, format_args!($($arg)+))
+
     };
 }
 
 #[macro_export]
 macro_rules! info {
-    (LEX, $($arg:tt)+) => {
-        log!(LEX, crate::log::Level::INFO, $($arg)+);
-    };
-    (PAR, $($arg:tt)+) => {
-        log!(PAR, crate::log::Level::INFO, $($arg)+);
-    };
-    (LA, $($arg:tt)+) => {
-        log!(LA, crate::log::Level::INFO, $($arg)+);
-    };
     ($($arg:tt)+) => {
-        log!(crate::log::Level::INFO, $($arg)+);
+        #[cfg(any(log_info, everything))]
+        log!(crate::log::Level::INFO, $($arg)+)
     };
 }
 
 #[macro_export]
 macro_rules! warn {
-    (LEX, $($arg:tt)+) => {
-        log!(LEX, crate::log::Level::WARN, $($arg)+);
-    };
-    (PAR, $($arg:tt)+) => {
-        log!(PAR, crate::log::Level::WARN, $($arg)+);
-    };
-    (LA, $($arg:tt)+) => {
-        log!(LA, crate::log::Level::WARN, $($arg)+);
-    };
     ($($arg:tt)+) => {
-        log!(crate::log::Level::WARN, $($arg)+);
+        #[cfg(any(log_warn, everything))]
+        log!(crate::log::Level::WARN, $($arg)+)
     };
 }
 
 #[macro_export]
 macro_rules! error {
-    (LEX, $($arg:tt)+) => {
-        log!(LEX, crate::log::Level::ERROR, $($arg)+);
-    };
-    (PAR, $($arg:tt)+) => {
-        log!(PAR, crate::log::Level::ERROR, $($arg)+);
-    };
-    (LA, $($arg:tt)+) => {
-        log!(LA, crate::log::Level::ERROR, $($arg)+);
-    };
     ($($arg:tt)+) => {
-        log!(crate::log::Level::ERROR, $($arg)+);
+        #[cfg(any(log_error, everything))]
+        log!(crate::log::Level::ERROR, $($arg)+)
     };
 }
 
 #[macro_export]
 macro_rules! debug {
-    (LEX, $($arg:tt)+) => {
-        log!(LEX, crate::log::Level::DEBUG, $($arg)+);
-    };
-    (PAR, $($arg:tt)+) => {
-        log!(PAR, crate::log::Level::DEBUG, $($arg)+);
-    };
-    (LA, $($arg:tt)+) => {
-        log!(LA, crate::log::Level::DEBUG, $($arg)+);
-    };
     ($($arg:tt)+) => {
-        log!(crate::log::Level::DEBUG, $($arg)+);
+        #[cfg(any(log_debug, everything))]
+        log!(crate::log::Level::DEBUG, $($arg)+)
     };
 }
 
 #[macro_export]
 macro_rules! test {
-    (LEX, $($arg:tt)+) => {
-        log!(LEX, crate::log::Level::TEST, $($arg)+);
-    };
-    (PAR, $($arg:tt)+) => {
-        log!(PAR, crate::log::Level::TEST, $($arg)+);
-    };
-    (LA, $($arg:tt)+) => {
-        log!(LA, crate::log::Level::TEST, $($arg)+);
-    };
     ($($arg:tt)+) => {
-        log!(crate::log::Level::TEST, $($arg)+);
+        #[cfg(any(log_test, everything))]
+        log!(crate::log::Level::TEST, $($arg)+)
+    };
+}
+
+#[macro_export]
+macro_rules! lex {
+    ($($arg:tt)+) => {
+        #[cfg(any(log_lex, everything))]
+        log!(crate::log::Level::LEX, $($arg)+)
+    };
+}
+
+#[macro_export]
+macro_rules! parse {
+    ($($arg:tt)+) => {
+        log!(crate::log::Level::PARSE, $($arg)+)
     };
 }

@@ -1,7 +1,8 @@
 use crate::{
+    debug,
     err::LexError,
-    error, info, log,
-    token::{InsertKw, Tok, TokKind},
+    info,
+    token::{Tok, TokKind},
 };
 
 #[derive(Clone)]
@@ -33,9 +34,8 @@ impl Lex {
     }
 
     pub fn assert_look_ahead(&mut self, expected: Tok) -> Result<Tok, LexError> {
-        if let Some(cx) = &self.tmpcx {
-            self.cx = cx.clone();
-            self.tmpcx = None;
+        if let None = self.tmpcx {
+            self.tmpcx = Some(self.cx.clone());
         }
         let tok = self.lx_tok()?;
         if tok != expected {
@@ -50,16 +50,16 @@ impl Lex {
     }
 
     pub fn look_ahead(&mut self) -> Result<Tok, LexError> {
-        if let Some(cx) = &self.tmpcx {
-            self.cx = cx.clone();
-            self.tmpcx = None;
+        if let None = self.tmpcx {
+            self.tmpcx = Some(self.cx.clone());
         }
         self.lx_tok()
     }
 
     pub fn assert_next_token(&mut self, expected: TokKind) -> Result<Tok, LexError> {
-        if let None = self.tmpcx {
-            self.tmpcx = Some(self.cx.clone());
+        if let Some(cx) = &self.tmpcx {
+            self.cx = cx.clone();
+            self.tmpcx = None;
         }
         let tok = self.lx_tok()?;
         if tok != expected {
@@ -74,8 +74,9 @@ impl Lex {
     }
 
     pub fn next_token(&mut self) -> Result<Tok, LexError> {
-        if let None = self.tmpcx {
-            self.tmpcx = Some(self.cx.clone());
+        if let Some(cx) = &self.tmpcx {
+            self.cx = cx.clone();
+            self.tmpcx = None;
         }
         self.lx_tok()
     }
@@ -84,10 +85,13 @@ impl Lex {
         self.skip_ws();
 
         loop {
-            let ch = self.peek().ok_or(LexError::EOF)?;
+            let ch = match self.peek() {
+                Some(c) => c,
+                None => return Ok(Tok::EOF),
+            };
             info!("LX_TOK :: {}", ch);
             match Tok::from(ch) {
-                Tok::DQ => return self.lx_str(),
+                Tok::DQ | Tok::Dollar => return self.lx_str(),
                 Tok::Char(_) => return self.lx_ident(),
                 t => {
                     self.take();
@@ -100,13 +104,18 @@ impl Lex {
     fn lx_str(&mut self) -> Result<Tok, LexError> {
         info!("LX_STR");
         let mut buf = String::new();
-        let mut chs = String::new();
-        let mut inserts = Vec::new();
 
-        self.take().ok_or(LexError::UnexpectedEOF {
-            line: self.cx.line,
-            col: self.cx.col,
-        })?;
+        let insert_started = match self.take() {
+            Some('$') => true,
+            Some('"') => false,
+            _ => {
+                debug!("HERE :: {}", buf);
+                return Err(LexError::UnexpectedEOF {
+                    line: self.cx.line,
+                    col: self.cx.col,
+                });
+            }
+        };
 
         loop {
             let ch = self.peek().ok_or(LexError::UnterminatedString {
@@ -116,95 +125,22 @@ impl Lex {
             match ch {
                 '"' => {
                     self.take();
-                    return Ok(Tok::String { body: buf, inserts });
+                    if insert_started {
+                        return Ok(Tok::DollarTerminated(buf.into_boxed_str()));
+                    }
+                    return Ok(Tok::String(buf.into_boxed_str()));
                 }
-                '$' => inserts.push(self.lx_ins()?),
+                '$' => {
+                    self.take();
+                    if insert_started {
+                        return Ok(Tok::InBetween(buf.into_boxed_str()));
+                    }
+                    return Ok(Tok::DollarTerminated(buf.into_boxed_str()));
+                }
                 _ => {
                     self.take();
                     buf.push(ch);
-                    chs.push(ch);
                 }
-            }
-        }
-    }
-
-    fn lx_ins(&mut self) -> Result<Tok, LexError> {
-        info!("LX_INS");
-
-        self.take().ok_or(LexError::UnexpectedEOF {
-            line: self.cx.line,
-            col: self.cx.col,
-        })?;
-        let start = self.cx.ix;
-
-        match self.peek() {
-            Some('$') => {
-                info!("LX_INS :: $$");
-                self.take();
-                return Ok(Tok::Insert {
-                    kw: InsertKw::None,
-                    start,
-                });
-            }
-            Some(c) if c.is_alphabetic() => match self.lx_ident()? {
-                Tok::For => {
-                    let list = self.lx_ident()?;
-                    let name = match list {
-                        Tok::Ident(n) => n,
-                        _ => {
-                            return Err(LexError::Expected {
-                                line: self.cx.line,
-                                col: self.cx.col,
-                                expected: "identifier".to_string(),
-                                found: format!("{:?}", list),
-                            })
-                        }
-                    };
-                    info!("LX_INS :: $for {}", name);
-                    let fmt = match self.lx_str()? {
-                        Tok::String { body, inserts } => Tok::String { body, inserts },
-                        _ => unreachable!(),
-                    };
-                    info!("LX_INS :: fmt {:?}", fmt);
-                    match self.peek() {
-                        Some('$') => {
-                            self.take();
-                        }
-                        _ => {
-                            error!("LX_INS :: expected $");
-                            return Err(LexError::UnterminatedInsertion {
-                                line: self.cx.line,
-                                col: self.cx.col,
-                            });
-                        }
-                    }
-
-                    return Ok(Tok::Insert {
-                        kw: InsertKw::For {
-                            name,
-                            fmt: Box::new(fmt),
-                        },
-                        start,
-                    });
-                }
-                Tok::Ident(i) => {
-                    return Ok(Tok::Insert {
-                        kw: InsertKw::Some(i),
-                        start,
-                    })
-                }
-                _ => {
-                    return Err(LexError::InvalidInsertKeyword {
-                        line: self.cx.line,
-                        col: self.cx.col,
-                    })
-                }
-            },
-            _ => {
-                return Err(LexError::UnterminatedInsertion {
-                    line: self.cx.line,
-                    col: self.cx.col,
-                })
             }
         }
     }
@@ -227,6 +163,10 @@ impl Lex {
                 }
                 Some('_') => {
                     buf.push('_');
+                    self.take();
+                }
+                Some('.') => {
+                    buf.push('.');
                     self.take();
                 }
                 _ => {
@@ -293,10 +233,7 @@ mod test {
     lex_test!(
         lex_str,
         "\"hello world.\"",
-        Ok(Tok::String {
-            body: "hello world.".to_string(),
-            inserts: vec![]
-        })
+        Ok(Tok::String("hello world.".to_owned().into_boxed_str()))
     );
     lex_test!(
         lex_str_unterminated,
@@ -306,55 +243,7 @@ mod test {
     lex_test!(
         lex_str_insert,
         "\"hello $world\"",
-        Ok(Tok::String {
-            body: "hello ".to_string(),
-            inserts: vec![Tok::Insert {
-                kw: InsertKw::Some("world".to_owned().into_boxed_str()),
-                start: 8
-            }]
-        })
-    );
-    lex_test!(
-        lex_str_insert_empty,
-        r#""hello $$""#,
-        Ok(Tok::String {
-            body: "hello ".to_string(),
-            inserts: vec![Tok::Insert {
-                kw: InsertKw::None,
-                start: 8
-            },]
-        })
-    );
-    lex_test!(
-        lex_str_insert_num,
-        r#""hello $1""#,
-        Ok(Tok::String {
-            body: "hello ".to_string(),
-            inserts: vec![Tok::Insert {
-                kw: InsertKw::Number(1),
-                start: 8
-            },]
-        })
-    );
-    lex_test!(
-        lex_str_insert_for,
-        r#""hello $for world "there, $$"$""#,
-        Ok(Tok::String {
-            body: "hello ".to_string(),
-            inserts: vec![Tok::Insert {
-                kw: InsertKw::For {
-                    name: "world".to_owned().into_boxed_str(),
-                    fmt: Box::new(Tok::String {
-                        body: "there, ".to_string(),
-                        inserts: vec![Tok::Insert {
-                            kw: InsertKw::None,
-                            start: 27
-                        },]
-                    })
-                },
-                start: 8
-            },]
-        })
+        Ok(Tok::DollarTerminated("hello ".to_owned().into_boxed_str()))
     );
     lex_test!(lex_struct, "struct", Ok(Tok::Struct));
     lex_test!(lex_fun, "fmt", Ok(Tok::Fmt));
