@@ -8,7 +8,7 @@ fn main() {
         print!(">>\t");
         std::io::stdout().flush().unwrap();
         std::io::stdin().read_line(&mut inp).unwrap();
-        let mut lex = tipis::lex::Lex::new(&inp);
+        let mut lex = tipis::lex::Lexer::new(&inp);
         let tok = lex.next_token();
         println!("<<\t{:?}", tok);
         // let mut parser = Parser::new(&mut lex);

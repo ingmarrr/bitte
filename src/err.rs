@@ -13,6 +13,9 @@ pub enum LexError {
     #[error("L: {line} | C: {col} :: Invalid insert keyword (expected `for` or valid identifier)")]
     InvalidInsertKeyword { line: usize, col: usize },
 
+    #[error("L: {line} | C: {col} :: Invalid escape sequence :: {ch}")]
+    InvalidEscapeSequence { line: usize, col: usize, ch: char },
+
     #[error("L: {line} | C: {col} :: Unexpected EOF")]
     UnexpectedEOF { line: usize, col: usize },
 
@@ -65,6 +68,36 @@ pub enum ParseError {
 
     #[error(transparent)]
     LexError(#[from] LexError),
+
+    #[error("Unimplemented")]
+    Unimplemented,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum SemanticError {
+    #[error("L: {line} | C: {col} :: Expected {expected} :: {found}")]
+    Expected {
+        line: usize,
+        col: usize,
+        expected: String,
+        found: String,
+    },
+
+    #[error("L: {line} | C: {col} :: Invalid type :: {ty}")]
+    InvalidType { line: usize, col: usize, ty: String },
+
+    #[error("L: {line} | C: {col} :: Invalid token :: {tok}")]
+    InvalidToken {
+        line: usize,
+        col: usize,
+        tok: String,
+    },
+
+    #[error("L: {line} | C: {col} :: Unexpected EOF")]
+    UnexpectedEOF { line: usize, col: usize },
+
+    #[error(transparent)]
+    ParseError(#[from] ParseError),
 
     #[error("Unimplemented")]
     Unimplemented,

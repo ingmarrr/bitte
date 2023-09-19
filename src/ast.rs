@@ -7,23 +7,24 @@ pub enum Stmt {
 #[derive(Debug, PartialEq)]
 pub enum Decl {
     Struct(Struct),
-    Let {
-        name: Box<str>,
-        ty: Option<Ty>,
-        expr: Expr,
-    },
-    Fmt {
-        name: String,
-        params: Vec<Param>,
-        body: Box<str>,
-    },
+    Let { name: Box<str>, ty: Ty, expr: Expr },
+    Fmt(Fmt),
+    Required { name: Box<str>, ty: Ty },
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
+pub struct Fmt {
+    pub name: Box<str>,
+    pub params: Vec<(Box<str>, Ty)>,
+    pub string_parts: Vec<Box<str>>,
+    pub inserts: Vec<(usize, Insert)>,
+}
+
+#[derive(Debug, PartialEq)]
 pub struct Struct {
     pub name: Box<str>,
     pub children: Vec<Struct>,
-    pub files: Vec<Box<str>>,
+    pub files: Vec<(Box<str>, Option<Expr>)>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -32,7 +33,7 @@ pub enum Expr {
     Lit(Lit),
     StructInit {
         name: String,
-        fields: Vec<Field>,
+        fields: Vec<(Box<str>, Ty)>,
     },
     Fmt {
         name: String,
@@ -42,18 +43,6 @@ pub enum Expr {
         string_parts: Vec<Box<str>>,
         inserts: Vec<(usize, Insert)>,
     },
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Field {
-    pub name: String,
-    pub val: Expr,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Param {
-    pub name: String,
-    pub ty: Ty,
 }
 
 #[derive(Debug, PartialEq)]
@@ -84,11 +73,11 @@ pub enum Insert {
     },
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Ty {
     Str,
     Char,
     Int,
     List,
-    Struct(String),
+    Struct,
 }

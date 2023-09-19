@@ -13,15 +13,15 @@ pub struct Cx {
     pub ch: char,
 }
 
-pub struct Lex {
+pub struct Lexer {
     pub chars: Vec<char>,
     pub cx: Cx,
     pub tmpcx: Option<Cx>,
 }
 
-impl Lex {
-    pub fn new(inp: &str) -> Lex {
-        Lex {
+impl Lexer {
+    pub fn new(inp: &str) -> Lexer {
+        Lexer {
             chars: inp.chars().collect(),
             cx: Cx {
                 ix: 0,
@@ -92,7 +92,7 @@ impl Lex {
             info!("LX_TOK :: {}", ch);
             match Tok::from(ch) {
                 Tok::DQ | Tok::Dollar => return self.lx_str(),
-                Tok::Char(_) => return self.lx_ident(),
+                Tok::Char(c) if c.is_alphanumeric() => return self.lx_ident(),
                 t => {
                     self.take();
                     return Ok(t);
@@ -105,7 +105,7 @@ impl Lex {
         info!("LX_STR");
         let mut buf = String::new();
 
-        let insert_started = match self.take() {
+        let dollar_started = match self.take() {
             Some('$') => true,
             Some('"') => false,
             _ => {
@@ -125,14 +125,36 @@ impl Lex {
             match ch {
                 '"' => {
                     self.take();
-                    if insert_started {
-                        return Ok(Tok::DollarTerminated(buf.into_boxed_str()));
+                    if dollar_started {
+                        return Ok(Tok::DollarStarted(buf.into_boxed_str()));
                     }
                     return Ok(Tok::String(buf.into_boxed_str()));
                 }
+                '\\' => {
+                    let next = self.peek();
+                    match next {
+                        Some('n') | Some('r') | Some('t') | Some('\\') | Some('"') | Some('$') => {
+                            self.take();
+                            buf.push(next.unwrap());
+                        }
+                        Some(c) => {
+                            return Err(LexError::InvalidEscapeSequence {
+                                line: self.cx.line,
+                                col: self.cx.col,
+                                ch: c,
+                            })
+                        }
+                        None => {
+                            return Err(LexError::UnterminatedString {
+                                line: self.cx.line,
+                                col: self.cx.col,
+                            })
+                        }
+                    }
+                }
                 '$' => {
                     self.take();
-                    if insert_started {
+                    if dollar_started {
                         return Ok(Tok::InBetween(buf.into_boxed_str()));
                     }
                     return Ok(Tok::DollarTerminated(buf.into_boxed_str()));
@@ -157,7 +179,7 @@ impl Lex {
                     info!("LX_IDENT :: {}", buf);
                     return Ok(Tok::from(buf));
                 }
-                Some(c) if c.is_alphabetic() => {
+                Some(c) if c.is_alphanumeric() => {
                     buf.push(c);
                     self.take();
                 }
@@ -224,7 +246,7 @@ mod test {
             #[test]
             fn $name() {
                 test!(LEX, "Testing `{}` = `{}`", stringify!($name), $inp);
-                let mut lex = Lex::new($inp);
+                let mut lex = Lexer::new($inp);
                 assert_eq!(lex.next_token(), $out);
             }
         };
@@ -256,7 +278,7 @@ mod test {
 
     #[test]
     fn lex_symbols() {
-        let mut lex = Lex::new("= + ? ! { } [ ] ( )");
+        let mut lex = Lexer::new("= + ? ! { } [ ] ( )");
         assert_eq!(lex.next_token(), Ok(Tok::Eq));
         assert_eq!(lex.next_token(), Ok(Tok::Plus));
         assert_eq!(lex.next_token(), Ok(Tok::Opt));
