@@ -1,0 +1,7 @@
+
+struct main {
+    src {
+        main.rs
+    }
+    Cargo.toml
+}

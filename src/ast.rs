@@ -13,6 +13,20 @@ pub enum Decl {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum Expr {
+    Ident(Box<str>),
+    Lit(Lit),
+    Fmt {
+        name: Box<str>,
+        args: Vec<Expr>,
+    },
+    Inserted {
+        string_parts: Vec<Box<str>>,
+        inserts: Vec<(usize, Insert)>,
+    },
+}
+
+#[derive(Debug, PartialEq)]
 pub struct Fmt {
     pub name: Box<str>,
     pub params: Vec<(Box<str>, Ty)>,
@@ -23,26 +37,9 @@ pub struct Fmt {
 #[derive(Debug, PartialEq)]
 pub struct Struct {
     pub name: Box<str>,
+    pub params: Vec<(Box<str>, Ty)>,
     pub children: Vec<Struct>,
     pub files: Vec<(Box<str>, Option<Expr>)>,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Expr {
-    Ident(String),
-    Lit(Lit),
-    StructInit {
-        name: String,
-        fields: Vec<(Box<str>, Ty)>,
-    },
-    Fmt {
-        name: String,
-        args: Vec<Expr>,
-    },
-    Inserted {
-        string_parts: Vec<Box<str>>,
-        inserts: Vec<(usize, Insert)>,
-    },
 }
 
 #[derive(Debug, PartialEq)]
@@ -80,4 +77,16 @@ pub enum Ty {
     Int,
     List,
     Struct,
+}
+
+impl std::fmt::Display for Ty {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Ty::Str => f.write_str("str"),
+            Ty::Char => f.write_str("char"),
+            Ty::Int => f.write_str("int"),
+            Ty::List => f.write_str("list"),
+            Ty::Struct => f.write_str("struct"),
+        }
+    }
 }

@@ -75,30 +75,24 @@ pub enum ParseError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum SemanticError {
-    #[error("L: {line} | C: {col} :: Expected {expected} :: {found}")]
-    Expected {
-        line: usize,
-        col: usize,
-        expected: String,
-        found: String,
-    },
+    #[error("Conflict: An element with this name already exists :: {0}")]
+    AlreadyExists(String),
 
-    #[error("L: {line} | C: {col} :: Invalid type :: {ty}")]
-    InvalidType { line: usize, col: usize, ty: String },
+    #[error("Invalid type :: {0}")]
+    InvalidType(String),
 
-    #[error("L: {line} | C: {col} :: Invalid token :: {tok}")]
-    InvalidToken {
-        line: usize,
-        col: usize,
-        tok: String,
-    },
+    #[error("Unknown type :: {0}")]
+    UnknownType(String),
 
-    #[error("L: {line} | C: {col} :: Unexpected EOF")]
-    UnexpectedEOF { line: usize, col: usize },
+    #[error("Unknown fmt :: {0}")]
+    UnknownFmt(String),
+
+    #[error("Unused Insertion, Should be `str` :: {0}")]
+    UnusedInsertion(String),
+
+    #[error("Out of scope :: {0}. Expected :: {1}, Found :: {2}")]
+    OutOfScope(String, String, String),
 
     #[error(transparent)]
     ParseError(#[from] ParseError),
-
-    #[error("Unimplemented")]
-    Unimplemented,
 }
