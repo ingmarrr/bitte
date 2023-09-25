@@ -117,10 +117,7 @@ pub enum Tok {
 impl Tok {
     pub fn is_str(&self) -> bool {
         match self {
-            Tok::String(_)
-            | Tok::DollarStarted(_)
-            | Tok::DollarTerminated(_)
-            | Tok::InBetween(_) => true,
+            Tok::String(_) | Tok::DollarTerminated(_) => true,
             _ => false,
         }
     }

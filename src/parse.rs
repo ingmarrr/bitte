@@ -1,8 +1,8 @@
-use std::f32::consts::E;
-
 use crate::{
-    ast::{Decl, Expr, Fmt, Insert, List, Lit, Stmt, Struct, Ty},
+    ast::{Stmt, Ty},
+    decl::{Decl, Fmt, Let, Struct},
     err::ParseError,
+    expr::{Expr, FmtCall, Insert, Inserted, List, Lit, StructCall},
     parse,
     token::{Tok, TokKind},
 };
@@ -15,15 +15,16 @@ impl Parser {
         Self { lx }
     }
 
-    pub fn parse(&mut self) -> Result<Vec<Stmt>, ParseError> {
+    pub fn parse(&mut self) -> Result<Vec<Decl>, ParseError> {
         let mut stmts = Vec::new();
 
         loop {
             stmts.push(match self.lx.look_ahead()? {
-                tok if tok.is_str() => Stmt::Expr(self.parse_str()?),
-                Tok::Struct => Stmt::Decl(self.parse_struct()?),
-                Tok::Let => Stmt::Decl(self.parse_let()?),
-                Tok::Fmt => Stmt::Decl(self.parse_fmt()?),
+                // tok if tok.is_str() => Stmt::Expr(self.parse_str()?),
+                Tok::Struct => self.parse_struct()?,
+                Tok::Let => self.parse_let()?,
+                Tok::Fmt => self.parse_fmt()?,
+                Tok::Ident(_) => return Err(ParseError::NoTopLevelExpressionsAllowed),
                 Tok::EOF => return Ok(stmts),
                 _t => {
                     debug!("Parsing :: {:#?}", _t);
@@ -40,13 +41,13 @@ impl Parser {
             _ => unreachable!(),
         };
         self.lx.assert_next_token(TokKind::LParen)?;
-        let params = self.params()?;
+        let params = self.parse_params()?;
         self.lx.assert_next_token(TokKind::Eq)?;
         let body = self.parse_str()?;
-        if let Expr::Inserted {
+        if let Expr::Inserted(Inserted {
             string_parts,
             inserts,
-        } = body
+        }) = body
         {
             return Ok(Decl::Fmt(Fmt {
                 name,
@@ -71,7 +72,7 @@ impl Parser {
         })
     }
 
-    fn params(&mut self) -> Result<Vec<(Box<str>, Ty)>, ParseError> {
+    fn parse_params(&mut self) -> Result<Vec<(Box<str>, Ty)>, ParseError> {
         let mut fields = Vec::new();
         loop {
             let name = match self.lx.assert_next_token(TokKind::Ident)? {
@@ -101,6 +102,10 @@ impl Parser {
         }
     }
 
+    fn parse_fields(&mut self) -> Result<Vec<(Box<str>, Expr)>, ParseError> {
+        todo!()
+    }
+
     fn parse_struct(&mut self) -> Result<Decl, ParseError> {
         let _ = self.lx.assert_next_token(TokKind::Struct)?;
         let name = match self.lx.assert_next_token(TokKind::Ident)? {
@@ -116,6 +121,7 @@ impl Parser {
         parse!("{}", name);
         let mut children = Vec::new();
         let mut files = Vec::new();
+        let mut params = Vec::new();
 
         match self.lx.look_ahead()? {
             Tok::Semi | Tok::RBrace | Tok::Comma => {
@@ -124,7 +130,14 @@ impl Parser {
                     name,
                     children,
                     files,
+                    params,
                 });
+            }
+            Tok::LParen => {
+                parse!("Found `(`");
+                self.lx.assert_next_token(TokKind::LParen)?;
+                params = self.parse_params()?;
+                self.lx.assert_next_token(TokKind::RParen)?;
             }
             _ => {}
         };
@@ -138,6 +151,7 @@ impl Parser {
                             name,
                             children,
                             files,
+                            params,
                         });
                     }
                     Tok::FilePath(path) => {
@@ -203,7 +217,6 @@ impl Parser {
             ty = Some(match &expr {
                 Expr::Lit(Lit::Str(_)) => Ty::Str,
                 Expr::Lit(Lit::Char(_)) => Ty::Char,
-                Expr::Lit(Lit::Num(_)) => Ty::Int,
                 Expr::Lit(Lit::List(_)) => Ty::List,
                 Expr::Fmt { .. } | Expr::Inserted { .. } | Expr::Ident(_) => Ty::Str,
                 _ => {
@@ -217,11 +230,11 @@ impl Parser {
             });
         }
 
-        Ok(Decl::Let {
+        Ok(Decl::Let(Let {
             name,
             ty: ty.unwrap(),
             expr,
-        })
+        }))
     }
 
     fn parse_expr(&mut self) -> Result<Expr, ParseError> {
@@ -229,12 +242,41 @@ impl Parser {
         match self.lx.look_ahead()? {
             t if t.is_str() => self.parse_str(),
             Tok::LBracket => Ok(Expr::Lit(Lit::List(self.parse_list()?))),
-            Tok::Ident(_) => todo!(),
+            Tok::Ident(i) => match self.lx.look_ahead() {
+                Ok(Tok::LParen) => Ok(Expr::Fmt(self.parse_fmt_call()?)),
+                Ok(Tok::LBrace) => Ok(Expr::Struct(self.parse_struct_call()?)),
+                Ok(_) => {
+                    self.lx.next_token()?;
+                    Ok(Expr::Ident(i))
+                }
+                Err(e) => Err(e.into()),
+            },
             t => {
                 parse!("Parsing expr :: {:#?}", t);
                 todo!()
             }
         }
+    }
+
+    fn parse_fmt_call(&mut self) -> Result<FmtCall, ParseError> {
+        let name = match self.lx.assert_next_token(TokKind::Ident)? {
+            Tok::Ident(name) => name,
+            _ => unreachable!(),
+        };
+        let _ = self.lx.assert_next_token(TokKind::LParen)?;
+        let mut fields = Vec::new();
+        loop {
+            if let Tok::RParen = self.lx.look_ahead()? {
+                let _ = self.lx.assert_next_token(TokKind::RParen)?;
+                return Ok(FmtCall { name, fields });
+            }
+            let expr = self.parse_expr()?;
+            fields.push((name.clone(), expr));
+        }
+    }
+
+    fn parse_struct_call(&mut self) -> Result<StructCall, ParseError> {
+        todo!()
     }
 
     fn parse_str(&mut self) -> Result<Expr, ParseError> {
@@ -248,10 +290,10 @@ impl Parser {
                 Tok::String(body) => return Ok(Expr::Lit(Lit::Str(body))),
                 Tok::DollarStarted(body) => {
                     out_body.push(body);
-                    return Ok(Expr::Inserted {
+                    return Ok(Expr::Inserted(Inserted {
                         string_parts: out_body,
                         inserts,
-                    });
+                    }));
                 }
                 Tok::InBetween(body) | Tok::DollarTerminated(body) => {
                     ix += 1;
@@ -361,7 +403,6 @@ impl Parser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::Stmt;
     use crate::lex::Lexer;
     use crate::test;
 
@@ -394,18 +435,20 @@ mod tests {
     ps_test!(
         test_struct,
         "struct hello { world }",
-        Ok(vec![Stmt::Decl(Decl::Struct(Struct {
+        Ok(vec![Decl::Struct(Struct {
             name: "hello".to_string().into_boxed_str(),
             children: vec![Struct {
                 name: "world".to_string().into_boxed_str(),
                 children: vec![],
                 files: vec![],
+                params: vec![],
             }],
             files: vec![],
-        }))]);
+            params: vec![],
+        })]);
         test_struct_nested,
         "struct hello { world { nested } }",
-        Ok(vec![Stmt::Decl(Decl::Struct(Struct {
+        Ok(vec![Decl::Struct(Struct {
             name: "hello".to_string().into_boxed_str(),
             children: vec![Struct {
                 name: "world".to_string().into_boxed_str(),
@@ -413,42 +456,49 @@ mod tests {
                     name: "nested".to_string().into_boxed_str(),
                     children: vec![],
                     files: vec![],
+                    params: vec![],
                 }],
                 files: vec![],
+                params: vec![],
             }],
             files: vec![],
-        }))]);
+            params: vec![],
+        })]);
         test_struct_files,
         "struct hello { world.csv }",
-        Ok(vec![Stmt::Decl(Decl::Struct(Struct {
+        Ok(vec![Decl::Struct(Struct {
             name: "hello".to_string().into_boxed_str(),
             children: vec![],
             files: vec![("world.csv".to_string().into_boxed_str(), None)],
-        }))]);
+            params: vec![],
+        })]);
         test_struct_files_nested,
         "struct hello { world { nested.csv } }",
-        Ok(vec![Stmt::Decl(Decl::Struct(Struct {
+        Ok(vec![Decl::Struct(Struct {
             name: "hello".to_string().into_boxed_str(),
             children: vec![Struct {
                 name: "world".to_string().into_boxed_str(),
                 children: vec![],
                 files: vec![("nested.csv".to_string().into_boxed_str(), None)],
+                params: vec![],
             }],
             files: vec![],
-        }))]);
+            params: vec![],
+        })]);
         test_multiple_files,
         "struct hello { world.csv, nested.csv }",
-        Ok(vec![Stmt::Decl(Decl::Struct(Struct {
+        Ok(vec![Decl::Struct(Struct {
             name: "hello".to_string().into_boxed_str(),
             children: vec![],
             files: vec![
                 ("world.csv".to_string().into_boxed_str(), None),
                 ("nested.csv".to_string().into_boxed_str(), None)
             ],
-        }))]);
+            params: vec![],
+        })]);
         test_multiple_nested_structs,
         "struct hello { world { world1.csv, world2.csv }, nested { nested1.csv, nested2.csv } }",
-        Ok(vec![Stmt::Decl(Decl::Struct(Struct {
+        Ok(vec![Decl::Struct(Struct {
             name: "hello".to_string().into_boxed_str(),
             children: vec![
                 Struct {
@@ -458,6 +508,7 @@ mod tests {
                         ("world1.csv".to_string().into_boxed_str(), None),
                         ("world2.csv".to_string().into_boxed_str(), None),
                     ],
+                    params: vec![],
                 },
                 Struct {
                     name: "nested".to_string().into_boxed_str(),
@@ -466,13 +517,15 @@ mod tests {
                         ("nested1.csv".to_string().into_boxed_str(), None),
                         ("nested2.csv".to_string().into_boxed_str(), None),
                     ],
+                    params: vec![],
                 }
             ],
             files: vec![],
-        }))]);
+            params: vec![],
+        })]);
         test_multiple_nested_structs2,
         "struct hello { world { world1.csv, anotherworld, world2.csv }, nested { nested1.csv, nested2.csv } }",
-        Ok(vec![Stmt::Decl(Decl::Struct(Struct {
+        Ok(vec![Decl::Struct(Struct {
             name: "hello".to_string().into_boxed_str(),
             children: vec![
                 Struct {
@@ -481,11 +534,13 @@ mod tests {
                         name: "anotherworld".to_string().into_boxed_str(),
                         children: vec![],
                         files: vec![],
+                        params: vec![],
                     }],
                     files: vec![
                         ("world1.csv".to_string().into_boxed_str(), None),
                         ("world2.csv".to_string().into_boxed_str(), None),
                     ],
+                    params: vec![],
                 },
                 Struct {
                     name: "nested".to_string().into_boxed_str(),
@@ -494,24 +549,26 @@ mod tests {
                         ("nested1.csv".to_string().into_boxed_str(), None),
                         ("nested2.csv".to_string().into_boxed_str(), None),
                     ],
+                    params: vec![],
                 }
             ],
             files: vec![],
-        }))]);
+            params: vec![],
+        })]);
     );
 
     ps_test!(
         test_fmt,
         r#"fmt hello(name: str) = "hello, $name$""#,
-        Ok(vec![Stmt::Decl(Decl::Fmt(Fmt {
+        Ok(vec![Decl::Fmt(Fmt {
             name: "hello".to_string().into_boxed_str(),
             params: vec![("name".to_string().into_boxed_str(), Ty::Str)],
             string_parts: vec!["hello, ".to_string().into_boxed_str(), "".to_string().into_boxed_str()],
             inserts: vec![(1, Insert::Ident("name".to_string().into_boxed_str()))],
-        }))]);
+        })]);
         test_fmt_multiple_args,
         r#"fmt hello(name: str, age: int) = "hello, $name$, you are $age$""#,
-        Ok(vec![Stmt::Decl(Decl::Fmt(Fmt {
+        Ok(vec![Decl::Fmt(Fmt {
             name: "hello".to_string().into_boxed_str(),
             params: vec![
                 ("name".to_string().into_boxed_str(), Ty::Str),
@@ -526,10 +583,10 @@ mod tests {
                 (1, Insert::Ident("name".to_string().into_boxed_str())),
                 (2, Insert::Ident("age".to_string().into_boxed_str()))
             ],
-        }))]);
+        })]);
         test_fmt_for,
         r#"fmt hello(greet: str) = "hello, $greet for name in ["world", "bob"]$""#,
-        Ok(vec![Stmt::Decl(Decl::Fmt(Fmt {
+        Ok(vec![Decl::Fmt(Fmt {
             name: "hello".to_string().into_boxed_str(),
             params: vec![("greet".to_string().into_boxed_str(), Ty::Str)],
             string_parts: vec!["hello, ".to_string().into_boxed_str(), "".to_string().into_boxed_str()],
@@ -538,23 +595,25 @@ mod tests {
                 item: "name".to_string().into_boxed_str(),
                 iter: List::LitList(vec!["world".to_string().into_boxed_str(), "bob".to_string().into_boxed_str()]),
             })],
-        }))]);
+        })]);
     );
 
     ps_test!(
         multiple_decls,
         r#"struct hello { world.csv } struct world { hello.csv }"#,
         Ok(vec![
-            Stmt::Decl(Decl::Struct(Struct {
+            Decl::Struct(Struct {
                 name: "hello".to_string().into_boxed_str(),
                 children: vec![],
                 files: vec![("world.csv".to_string().into_boxed_str(), None)],
-            })),
-            Stmt::Decl(Decl::Struct(Struct {
+                params: vec![],
+            }),
+            Decl::Struct(Struct {
                 name: "world".to_string().into_boxed_str(),
                 children: vec![],
                 files: vec![("hello.csv".to_string().into_boxed_str(), None)],
-            }))
+                params: vec![],
+            })
         ]);
     );
 
@@ -564,7 +623,7 @@ mod tests {
         let lex = Lexer::new(inp);
         let mut par = Parser::new(lex);
         let out = par.parse();
-        let exp = Ok(vec![Stmt::Decl(Decl::Let {
+        let exp = Ok(vec![Decl::Let(Let {
             name: "a".to_string().into_boxed_str(),
             ty: Ty::Str,
             expr: Expr::Lit(Lit::Str("hello".to_owned().into_boxed_str())),
