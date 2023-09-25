@@ -1,8 +1,9 @@
 use crate::{
     ast::Ty,
-    decl::{Decl, Fmt, Let, Required, Struct},
+    decl::{Decl, Fmt, Let, Optional, Required, Struct},
     err::SemanticError,
     expr::{Expr, FmtCall, Insert, Inserted, Lit},
+    info,
     sym::{Key, Scope, Sym, SymTable},
 };
 
@@ -59,6 +60,9 @@ impl Analyzer {
             Decl::Fmt(f) => self.analyze_fmt(f)?,
             Decl::Let(l) => self.analyze_let(l)?,
             Decl::Required(Required { name, ty }) => self.analyze_required(name, ty)?,
+            Decl::Optional(Optional { name, ty, default }) => {
+                self.analyze_optional(name, ty, default)?
+            }
         }
         Ok(())
     }
@@ -98,11 +102,28 @@ impl Analyzer {
     }
 
     fn analyze_required(&mut self, name: Box<str>, ty: Ty) -> Result<(), SemanticError> {
+        info!("Required: {} :: {}", name, ty);
         if self.allow_requireds {
             self.requireds.push((name, ty));
             Ok(())
         } else {
             Err(SemanticError::RequiredsOnlyAtTop(name.to_string()))
+        }
+    }
+
+    fn analyze_optional(
+        &mut self,
+        name: Box<str>,
+        ty: Ty,
+        default: Expr,
+    ) -> Result<(), SemanticError> {
+        info!("Optional: {} :: {}", name, ty);
+        if self.allow_requireds {
+            self.analyze_expr(default.clone(), ty, Scope::Global)?;
+            self.optionals.push((name, ty, default));
+            Ok(())
+        } else {
+            return Err(SemanticError::RequiredsOnlyAtTop(name.to_string()));
         }
     }
 

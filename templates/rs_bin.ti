@@ -1,7 +1,8 @@
+req content: str
 
 struct main {
     src {
-        main.rs
+        main.rs: content
     }
     Cargo.toml
 }

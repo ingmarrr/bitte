@@ -9,6 +9,7 @@ pub enum Decl {
     Let(Let),
     Fmt(Fmt),
     Required(Required),
+    Optional(Optional),
 }
 
 impl Decl {
@@ -18,15 +19,17 @@ impl Decl {
             Decl::Let(l) => &l.name,
             Decl::Fmt(f) => &f.name,
             Decl::Required(r) => &r.name,
+            Decl::Optional(o) => &o.name,
         }
     }
 
     pub fn ty(&self) -> Ty {
         match self {
-            Decl::Struct(s) => Ty::Struct,
-            Decl::Let(l) => l.ty.clone(),
-            Decl::Fmt(f) => Ty::Str,
-            Decl::Required(r) => r.ty.clone(),
+            Decl::Struct(_) => Ty::Struct,
+            Decl::Let(l) => l.ty,
+            Decl::Fmt(_) => Ty::Str,
+            Decl::Required(r) => r.ty,
+            Decl::Optional(o) => o.ty,
         }
     }
 
@@ -38,12 +41,12 @@ impl Decl {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub struct Fmt {
+#[derive(Debug, PartialEq, Clone)]
+pub struct Struct {
     pub name: Box<str>,
     pub params: Vec<(Box<str>, Ty)>,
-    pub string_parts: Vec<Box<str>>,
-    pub inserts: Vec<(usize, Insert)>,
+    pub children: Vec<Struct>,
+    pub files: Vec<(Box<str>, Option<Expr>)>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -54,15 +57,22 @@ pub struct Let {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct Fmt {
+    pub name: Box<str>,
+    pub params: Vec<(Box<str>, Ty)>,
+    pub string_parts: Vec<Box<str>>,
+    pub inserts: Vec<(usize, Insert)>,
+}
+
+#[derive(Debug, PartialEq)]
 pub struct Required {
     pub name: Box<str>,
     pub ty: Ty,
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct Struct {
+#[derive(Debug, PartialEq)]
+pub struct Optional {
     pub name: Box<str>,
-    pub params: Vec<(Box<str>, Ty)>,
-    pub children: Vec<Struct>,
-    pub files: Vec<(Box<str>, Option<Expr>)>,
+    pub ty: Ty,
+    pub default: Expr,
 }

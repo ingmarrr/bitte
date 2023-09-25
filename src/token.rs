@@ -252,6 +252,7 @@ impl From<String> for Tok {
             "for" => Tok::For,
             "fmt" => Tok::Fmt,
             "in" => Tok::In,
+            "req" => Tok::Req,
             _ if value.contains('.') => Tok::FilePath(value.into_boxed_str()),
             _ => Tok::Ident(value.into_boxed_str()),
         }

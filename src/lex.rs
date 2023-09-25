@@ -1,7 +1,7 @@
 use crate::{
     debug,
     err::LexError,
-    info,
+    lex,
     token::{Tok, TokKind},
 };
 
@@ -49,6 +49,22 @@ impl Lexer {
         Ok(tok)
     }
 
+    pub fn assert_look_ahead_ident(&mut self) -> Result<Box<str>, LexError> {
+        if let None = self.tmpcx {
+            self.tmpcx = Some(self.cx.clone());
+        }
+        let tok = self.lx_tok()?;
+        if let Tok::Ident(s) = tok {
+            return Ok(s);
+        }
+        Err(LexError::Expected {
+            line: self.cx.line,
+            col: self.cx.col,
+            expected: "identifier".to_owned(),
+            found: tok.to_string(),
+        })
+    }
+
     pub fn look_ahead(&mut self) -> Result<Tok, LexError> {
         if let None = self.tmpcx {
             self.tmpcx = Some(self.cx.clone());
@@ -73,6 +89,23 @@ impl Lexer {
         Ok(tok)
     }
 
+    pub fn assert_next_ident(&mut self) -> Result<Box<str>, LexError> {
+        if let Some(cx) = &self.tmpcx {
+            self.cx = cx.clone();
+            self.tmpcx = None;
+        }
+        let tok = self.lx_tok()?;
+        if let Tok::Ident(s) = tok {
+            return Ok(s);
+        }
+        Err(LexError::Expected {
+            line: self.cx.line,
+            col: self.cx.col,
+            expected: "identifier".to_owned(),
+            found: tok.to_string(),
+        })
+    }
+
     pub fn next_token(&mut self) -> Result<Tok, LexError> {
         if let Some(cx) = &self.tmpcx {
             self.cx = cx.clone();
@@ -89,7 +122,7 @@ impl Lexer {
                 Some(c) => c,
                 None => return Ok(Tok::EOF),
             };
-            info!("LX_TOK :: {}", ch);
+            lex!("LX_TOK :: {}", ch);
             match Tok::from(ch) {
                 Tok::DQ | Tok::Dollar => return self.lx_str(),
                 Tok::Char(c) if c.is_alphanumeric() => return self.lx_ident(),
@@ -102,7 +135,7 @@ impl Lexer {
     }
 
     fn lx_str(&mut self) -> Result<Tok, LexError> {
-        info!("LX_STR");
+        lex!("LX_STR");
         let mut buf = String::new();
 
         let dollar_started = match self.take() {
@@ -168,7 +201,7 @@ impl Lexer {
     }
 
     fn lx_ident(&mut self) -> Result<Tok, LexError> {
-        info!("LX_IDENT");
+        lex!("LX_IDENT");
         let mut buf = String::new();
 
         loop {
@@ -176,7 +209,7 @@ impl Lexer {
             match ch {
                 Some(c) if c.is_whitespace() => {
                     self.take();
-                    info!("LX_IDENT :: {}", buf);
+                    lex!("LX_IDENT :: {}", buf);
                     return Ok(Tok::from(buf));
                 }
                 Some(c) if c.is_alphanumeric() => {
@@ -192,7 +225,7 @@ impl Lexer {
                     self.take();
                 }
                 _ => {
-                    info!("LX_IDENT :: {}", buf);
+                    lex!("LX_IDENT :: {}", buf);
                     return Ok(Tok::from(buf));
                 }
             }
@@ -211,9 +244,11 @@ impl Lexer {
             }
         }
         self.cx.ix += 1;
-        info!(
+        lex!(
             "TAKE :: {} :: LINE {} :: COL {}",
-            ch, self.cx.line, self.cx.col
+            ch,
+            self.cx.line,
+            self.cx.col
         );
         Some(ch)
     }
@@ -245,7 +280,7 @@ mod test {
         ($name:ident, $inp:expr, $out:expr) => {
             #[test]
             fn $name() {
-                test!(LEX, "Testing `{}` = `{}`", stringify!($name), $inp);
+                test!("Testing `{}` = `{}`", stringify!($name), $inp);
                 let mut lex = Lexer::new($inp);
                 assert_eq!(lex.next_token(), $out);
             }

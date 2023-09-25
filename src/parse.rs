@@ -1,6 +1,6 @@
 use crate::{
-    ast::{Stmt, Ty},
-    decl::{Decl, Fmt, Let, Struct},
+    ast::Ty,
+    decl::{Decl, Fmt, Let, Required, Struct},
     err::ParseError,
     expr::{Expr, FmtCall, Insert, Inserted, List, Lit, StructCall},
     parse,
@@ -24,7 +24,12 @@ impl Parser {
                 Tok::Struct => self.parse_struct()?,
                 Tok::Let => self.parse_let()?,
                 Tok::Fmt => self.parse_fmt()?,
-                Tok::Ident(_) => return Err(ParseError::NoTopLevelExpressionsAllowed),
+                Tok::Req => self.parse_required()?,
+                Tok::Opt => self.parse_optional()?,
+                Tok::Ident(i) => {
+                    parse!("Found ident :: {}", i);
+                    return Err(ParseError::NoTopLevelExpressionsAllowed);
+                }
                 Tok::EOF => return Ok(stmts),
                 _t => {
                     debug!("Parsing :: {:#?}", _t);
@@ -32,6 +37,24 @@ impl Parser {
                 }
             });
         }
+    }
+
+    fn parse_required(&mut self) -> Result<Decl, ParseError> {
+        self.lx.assert_next_token(TokKind::Req)?;
+        let name = self.lx.assert_next_ident()?;
+        self.lx.assert_next_token(TokKind::Colon)?;
+        let ty = self.parse_ty()?;
+        Ok(Decl::Required(Required { name, ty }))
+    }
+
+    fn parse_optional(&mut self) -> Result<Decl, ParseError> {
+        self.lx.assert_next_token(TokKind::Opt)?;
+        let name = self.lx.assert_next_ident()?;
+        self.lx.assert_next_token(TokKind::Colon)?;
+        let ty = self.parse_ty()?;
+        self.lx.assert_next_token(TokKind::Eq)?;
+        let default = self.parse_expr()?;
+        Ok(Decl::Optional(crate::decl::Optional { name, ty, default }))
     }
 
     fn parse_fmt(&mut self) -> Result<Decl, ParseError> {
@@ -102,9 +125,9 @@ impl Parser {
         }
     }
 
-    fn parse_fields(&mut self) -> Result<Vec<(Box<str>, Expr)>, ParseError> {
-        todo!()
-    }
+    // fn parse_fields(&mut self) -> Result<Vec<(Box<str>, Expr)>, ParseError> {
+    //     todo!()
+    // }
 
     fn parse_struct(&mut self) -> Result<Decl, ParseError> {
         let _ = self.lx.assert_next_token(TokKind::Struct)?;

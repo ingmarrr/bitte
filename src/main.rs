@@ -30,7 +30,14 @@ fn main() {
             let tp = include_str!("../templates/rs_bin.ti");
             let lx = tipis::lex::Lexer::new(tp);
             let mut par = tipis::parse::Parser::new(lx);
-            let decls = par.parse().unwrap();
+            let decls = match par.parse() {
+                Ok(decls) => decls,
+                Err(e) => {
+                    tipis::log!(tipis::log::Level::ERROR, "{}", e);
+                    println!("{:#?}", e);
+                    return;
+                }
+            };
             let mut analyzer = tipis::sem::Analyzer::new();
             let decls = analyzer.analyze(decls);
             println!("{:#?}", decls);

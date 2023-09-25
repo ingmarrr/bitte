@@ -8,12 +8,16 @@ fn main() {
         print!(">>\t");
         std::io::stdout().flush().unwrap();
         std::io::stdin().read_line(&mut inp).unwrap();
-        let mut lex = tipis::lex::Lexer::new(&inp);
-        let tok = lex.next_token();
-        println!("<<\t{:?}", tok);
-        // let mut parser = Parser::new(&mut lex);
-        // let def = parser.parse();
-        // println!("Program: {:#?}", def);
+        let lex = tipis::lex::Lexer::new(&inp);
+        let mut parser = tipis::parse::Parser::new(lex);
+        let decls = parser.parse();
+        if let Err(e) = decls {
+            println!("{:#?}", e);
+        } else {
+            let mut analyzer = tipis::sem::Analyzer::new();
+            let decls = analyzer.analyze(decls.unwrap());
+            println!("{:#?}", analyzer);
+        }
         inp.clear();
     }
 }

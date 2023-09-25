@@ -1,10 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{
-    ast::{Stmt, Ty},
-    decl::Decl,
-    err::SemanticError,
-};
+use crate::{ast::Ty, decl::Decl, err::SemanticError};
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub enum Scope {
@@ -96,6 +92,9 @@ impl SymTable {
                 }
                 Decl::Required(r) => {
                     sym_table.insert(r.name.to_owned(), Scope::Global, r.ty.clone(), Req::None)
+                }
+                Decl::Optional(o) => {
+                    sym_table.insert(o.name.to_owned(), Scope::Global, o.ty.clone(), Req::None)
                 }
             };
             if let Err(err) = res {

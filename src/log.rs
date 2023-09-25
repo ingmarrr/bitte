@@ -51,7 +51,7 @@ macro_rules! log {
 macro_rules! info {
     ($($arg:tt)+) => {
         #[cfg(any(log_info, everything))]
-        log!(crate::log::Level::INFO, $($arg)+)
+        println!("[{}] :: {}", crate::log::Level::INFO, format_args!($($arg)+))
     };
 }
 
@@ -59,7 +59,7 @@ macro_rules! info {
 macro_rules! warn {
     ($($arg:tt)+) => {
         #[cfg(any(log_warn, everything))]
-        log!(crate::log::Level::WARN, $($arg)+)
+        println!("[{}] :: {}", crate::log::Level::WARN, format_args!($($arg)+))
     };
 }
 
@@ -67,7 +67,7 @@ macro_rules! warn {
 macro_rules! error {
     ($($arg:tt)+) => {
         #[cfg(any(log_error, everything))]
-        log!(crate::log::Level::ERROR, $($arg)+)
+        println!("[{}] :: {}", crate::log::Level::ERROR, format_args!($($arg)+))
     };
 }
 
@@ -75,7 +75,7 @@ macro_rules! error {
 macro_rules! debug {
     ($($arg:tt)+) => {
         #[cfg(any(log_debug, everything))]
-        log!(crate::log::Level::DEBUG, $($arg)+)
+        println!("[{}] :: {}", crate::log::Level::DEBUG, format_args!($($arg)+))
     };
 }
 
@@ -83,7 +83,7 @@ macro_rules! debug {
 macro_rules! test {
     ($($arg:tt)+) => {
         #[cfg(any(log_test, everything))]
-        log!(crate::log::Level::TEST, $($arg)+)
+        println!("[{}] :: {}", crate::log::Level::TEST, format_args!($($arg)+))
     };
 }
 
@@ -91,13 +91,13 @@ macro_rules! test {
 macro_rules! lex {
     ($($arg:tt)+) => {
         #[cfg(any(log_lex, everything))]
-        log!(crate::log::Level::LEX, $($arg)+)
+        println!("[{}] :: {}", crate::log::Level::LEX, format_args!($($arg)+))
     };
 }
 
 #[macro_export]
 macro_rules! parse {
     ($($arg:tt)+) => {
-        log!(crate::log::Level::PARSE, $($arg)+)
+        println!("[{}] :: {}", crate::log::Level::PARSE, format_args!($($arg)+))
     };
 }

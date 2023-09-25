@@ -1,5 +1,3 @@
-// build.rs
-
 use dotenv::dotenv;
 use std::env;
 
@@ -7,6 +5,7 @@ fn main() {
     dotenv().ok();
 
     if let Ok(logging_level) = env::var("LOG") {
+        println!("cargo:rerun-if-env-changed=LOG");
         match logging_level.as_str() {
             "parser" => println!("cargo:rustc-cfg=log_parser"),
             "lexer" => println!("cargo:rustc-cfg=log_lexer"),
@@ -18,6 +17,6 @@ fn main() {
             _ => println!("cargo:rustc-cfg=everything"),
         }
     } else {
-        println!("cargo:rustc-cfg=all");
+        println!("cargo:rustc-cfg=everything");
     }
 }
