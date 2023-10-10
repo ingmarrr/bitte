@@ -75,14 +75,14 @@ impl std::fmt::Display for TokKind {
 
 #[derive(Debug, PartialEq)]
 pub enum Tok {
-    FilePath(Box<str>),
-    String(Box<str>),
-    DollarTerminated(Box<str>),
-    DollarStarted(Box<str>),
-    InBetween(Box<str>),
-    Ident(Box<str>),
+    FilePath(String),
+    String(String),
+    DollarTerminated(String),
+    DollarStarted(String),
+    InBetween(String),
+    Ident(String),
     Char(char),
-    Num(Box<str>),
+    Num(String),
 
     SQ,
     DQ,
@@ -203,8 +203,8 @@ impl std::fmt::Display for Tok {
 
 #[derive(Debug, PartialEq)]
 pub enum InsertKw {
-    For { name: Box<str>, fmt: Box<Tok> },
-    Some(Box<str>),
+    For { name: String, fmt: Box<Tok> },
+    Some(String),
     Number(usize),
     None,
 }
@@ -253,8 +253,9 @@ impl From<String> for Tok {
             "fmt" => Tok::Fmt,
             "in" => Tok::In,
             "req" => Tok::Req,
-            _ if value.contains('.') => Tok::FilePath(value.into_boxed_str()),
-            _ => Tok::Ident(value.into_boxed_str()),
+            "opt" => Tok::Opt,
+            _ if value.contains('.') => Tok::FilePath(value),
+            _ => Tok::Ident(value),
         }
     }
 }

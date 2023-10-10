@@ -1,3 +1,27 @@
+use std::error::Error;
+
+use crate::lexer::Cx;
+
+pub enum LxErrKind {
+    InvalidToken,
+    InvalidCharacter,
+    UnexpectedEOF,
+    UnterminatedString,
+}
+
+#[cfg_attr(test, derive(PartialEq))]
+#[derive(Debug, thiserror::Error)]
+pub enum LxError {
+    #[error("Invalid token :: {0}")]
+    InvalidToken(Cx),
+    #[error("Invalid character :: {0}")]
+    InvalidCharacter(Cx),
+    #[error("Unexpected EOF :: {0}")]
+    UnexpectedEOF(Cx),
+    #[error("Unterminated String :: {0}")]
+    Unterminated(Cx),
+}
+
 #[derive(Debug, thiserror::Error, PartialEq, Clone)]
 pub enum LexError {
     #[error("L: {line} | C: {col} :: Invalid character :: {ch}")]
@@ -87,6 +111,9 @@ pub enum SemanticError {
     #[error("Unknown type :: {0}")]
     UnknownType(String),
 
+    #[error("Unknown variable :: {0}")]
+    UnknownVariable(String),
+
     #[error("Unknown fmt :: {0}")]
     UnknownFmt(String),
 
@@ -99,6 +126,33 @@ pub enum SemanticError {
     #[error("Required fields must be declared in the beginning of the file :: {0}")]
     RequiredsOnlyAtTop(String),
 
+    #[error("No main struct found")]
+    NoMainStruct,
+
     #[error(transparent)]
     ParseError(#[from] ParseError),
+}
+
+pub struct Trace<E>
+where
+    E: Error + 'static,
+{
+    pub cx: SourceCx,
+    pub err: E,
+}
+
+pub struct SourceCx {
+    pub src: String,
+    pub file: String,
+    pub line: usize,
+    pub col: usize,
+}
+
+impl<E> Trace<E>
+where
+    E: Error + 'static,
+{
+    pub fn new(cx: SourceCx, err: E) -> Self {
+        Self { cx, err }
+    }
 }

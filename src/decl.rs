@@ -33,9 +33,9 @@ impl Decl {
         }
     }
 
-    pub fn is_req(&self) -> bool {
+    pub fn is_arg(&self) -> bool {
         match self {
-            Decl::Required(_) => true,
+            Decl::Required(_) | Decl::Optional(_) => true,
             _ => false,
         }
     }
@@ -43,36 +43,36 @@ impl Decl {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Struct {
-    pub name: Box<str>,
-    pub params: Vec<(Box<str>, Ty)>,
+    pub name: String,
+    pub params: Vec<(String, Ty)>,
     pub children: Vec<Struct>,
-    pub files: Vec<(Box<str>, Option<Expr>)>,
+    pub files: Vec<(String, Option<Expr>)>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Let {
-    pub name: Box<str>,
+    pub name: String,
     pub ty: Ty,
     pub expr: Expr,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Fmt {
-    pub name: Box<str>,
-    pub params: Vec<(Box<str>, Ty)>,
-    pub string_parts: Vec<Box<str>>,
+    pub name: String,
+    pub params: Vec<(String, Ty)>,
+    pub string_parts: Vec<String>,
     pub inserts: Vec<(usize, Insert)>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Required {
-    pub name: Box<str>,
+    pub name: String,
     pub ty: Ty,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Optional {
-    pub name: Box<str>,
+    pub name: String,
     pub ty: Ty,
     pub default: Expr,
 }

@@ -1,4 +1,4 @@
-req content: str
+req content: str;
 
 struct main {
     src {

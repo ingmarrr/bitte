@@ -5,7 +5,7 @@ use crate::{ast::Ty, decl::Decl, err::SemanticError};
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub enum Scope {
     Global,
-    Local(Box<str>),
+    Local(String),
 }
 
 impl std::fmt::Display for Scope {
@@ -19,20 +19,30 @@ impl std::fmt::Display for Scope {
 
 #[derive(PartialEq, Debug)]
 pub enum Req {
-    Some(Vec<(Box<str>, Ty)>),
+    Some(Vec<(String, Ty)>),
     None,
 }
 
 #[derive(Debug)]
 pub struct Sym {
-    pub name: Box<str>,
+    pub name: String,
     pub ty: Ty,
+    pub kind: Kind,
     pub scope: Scope,
     pub reqs: Req,
 }
 
+#[derive(Debug)]
+pub enum Kind {
+    Let,
+    Struct,
+    Fmt,
+    Required,
+    Optional,
+}
+
 #[derive(PartialEq, Eq, Hash, Debug)]
-pub struct Key(pub Box<str>, pub Scope);
+pub struct Key(pub String, pub Scope);
 
 #[derive(Debug)]
 pub struct SymTable {
@@ -50,82 +60,116 @@ impl SymTable {
         let mut sym_table = SymTable::new();
         let mut errs = Vec::new();
         for decl in decls.into_iter() {
-            let res = match decl {
-                Decl::Let(l) => {
-                    sym_table.insert(l.name.to_owned(), Scope::Global, l.ty.clone(), Req::None)
-                }
-                Decl::Struct(s) => {
-                    for (name, ty) in &s.params {
-                        if let Err(err) = sym_table.insert(
-                            name.to_owned(),
-                            Scope::Local(s.name.to_owned()),
-                            ty.clone(),
-                            Req::None,
-                        ) {
-                            errs.push(err);
-                        };
-                    }
-                    sym_table.insert(
-                        s.name.to_owned(),
-                        Scope::Global,
-                        Ty::Struct,
-                        Req::Some(s.params.to_owned()),
-                    )
-                }
-                Decl::Fmt(f) => {
-                    for (name, ty) in &f.params {
-                        if let Err(err) = sym_table.insert(
-                            name.to_owned(),
-                            Scope::Local(f.name.to_owned()),
-                            ty.clone(),
-                            Req::None,
-                        ) {
-                            errs.push(err);
-                        };
-                    }
-                    sym_table.insert(
-                        f.name.to_owned(),
-                        Scope::Global,
-                        Ty::Str,
-                        Req::Some(f.params.to_owned()),
-                    )
-                }
-                Decl::Required(r) => {
-                    sym_table.insert(r.name.to_owned(), Scope::Global, r.ty.clone(), Req::None)
-                }
-                Decl::Optional(o) => {
-                    sym_table.insert(o.name.to_owned(), Scope::Global, o.ty.clone(), Req::None)
-                }
-            };
-            if let Err(err) = res {
-                errs.push(err);
+            let (syms, mut err) = sym_table.sym(decl);
+            if let Err(e) = sym_table.insert_all(syms) {
+                err.extend(e);
             }
+            errs.append(&mut err);
         }
         (sym_table, errs)
     }
 
-    fn insert(
-        &mut self,
-        name: Box<str>,
-        scope: Scope,
-        ty: Ty,
-        reqs: Req,
-    ) -> Result<(), SemanticError> {
-        if let Some(sym) = self.symbols.get(&Key(name.to_owned(), scope.to_owned())) {
-            if sym.scope == scope {
+    pub fn sym(&self, decl: &Decl) -> (Vec<Sym>, Vec<SemanticError>) {
+        let mut syms = Vec::new();
+        let mut errs = Vec::new();
+        match decl {
+            Decl::Let(l) => syms.push(Sym {
+                name: l.name.to_owned(),
+                scope: Scope::Global,
+                ty: l.ty.clone(),
+                kind: Kind::Let,
+                reqs: Req::None,
+            }),
+            Decl::Struct(s) => {
+                for (name, ty) in &s.params {
+                    if let Some(sym) =
+                        self.get(&Key(name.to_owned(), Scope::Local(s.name.to_owned())))
+                    {
+                        errs.push(SemanticError::AlreadyExists(sym.name.to_string()));
+                    };
+                    syms.push(Sym {
+                        name: name.to_owned(),
+                        scope: Scope::Local(s.name.to_owned()),
+                        ty: ty.clone(),
+                        kind: Kind::Struct,
+                        reqs: Req::None,
+                    })
+                }
+                syms.push(Sym {
+                    name: s.name.to_owned(),
+                    scope: Scope::Global,
+                    ty: Ty::Struct,
+                    kind: Kind::Struct,
+                    reqs: Req::Some(s.params.to_owned()),
+                })
+            }
+            Decl::Fmt(f) => {
+                for (name, ty) in &f.params {
+                    if let Some(sym) =
+                        self.get(&Key(name.to_owned(), Scope::Local(f.name.to_owned())))
+                    {
+                        errs.push(SemanticError::AlreadyExists(sym.name.to_string()));
+                    };
+                    syms.push(Sym {
+                        name: name.to_owned(),
+                        scope: Scope::Local(f.name.to_owned()),
+                        ty: ty.clone(),
+                        kind: Kind::Fmt,
+                        reqs: Req::None,
+                    })
+                }
+                syms.push(Sym {
+                    name: f.name.to_owned(),
+                    scope: Scope::Global,
+                    ty: Ty::Str,
+                    kind: Kind::Fmt,
+                    reqs: Req::Some(f.params.to_owned()),
+                })
+            }
+            Decl::Required(r) => syms.push(Sym {
+                name: r.name.to_owned(),
+                scope: Scope::Global,
+                ty: r.ty.clone(),
+                kind: Kind::Required,
+                reqs: Req::None,
+            }),
+            Decl::Optional(o) => syms.push(Sym {
+                name: o.name.to_owned(),
+                scope: Scope::Global,
+                ty: o.ty.clone(),
+                kind: Kind::Optional,
+                reqs: Req::None,
+            }),
+        }
+        (syms, errs)
+    }
+
+    fn insert(&mut self, symbol: Sym) -> Result<(), SemanticError> {
+        if let Some(sym) = self
+            .symbols
+            .get(&Key(symbol.name.to_owned(), symbol.scope.to_owned()))
+        {
+            if sym.scope == symbol.scope {
                 return Err(SemanticError::AlreadyExists(sym.name.to_string()));
             }
         }
-        self.symbols.insert(
-            Key(name.to_owned(), scope.to_owned()),
-            Sym {
-                name,
-                ty,
-                scope,
-                reqs,
-            },
-        );
+        self.symbols
+            .insert(Key(symbol.name.to_owned(), symbol.scope.to_owned()), symbol);
         Ok(())
+    }
+
+    pub fn insert_all(&mut self, syms: Vec<Sym>) -> Result<(), Vec<SemanticError>> {
+        let mut errs = Vec::new();
+        for sym in syms.into_iter() {
+            if let Err(e) = self.insert(sym) {
+                errs.push(e);
+            }
+        }
+        if errs.is_empty() {
+            Ok(())
+        } else {
+            Err(errs)
+        }
     }
 
     pub fn get(&self, key: &Key) -> Option<&Sym> {
@@ -143,17 +187,17 @@ mod tests {
         let lex = crate::lex::Lexer::new(input);
         let mut par = crate::parse::Parser::new(lex);
         let stmts = par.parse().unwrap();
-        let (sym_table, errs) = SymTable::from_decls(&stmts);
+        let (sym_table, _) = SymTable::from_decls(&stmts);
         assert_eq!(
             sym_table
-                .get(&Key("x".to_owned().into_boxed_str(), Scope::Global))
+                .get(&Key("x".to_owned(), Scope::Global))
                 .unwrap()
                 .ty,
             Ty::Str
         );
         assert_eq!(
             sym_table
-                .get(&Key("y".to_owned().into_boxed_str(), Scope::Global))
+                .get(&Key("y".to_owned(), Scope::Global))
                 .unwrap()
                 .ty,
             Ty::List

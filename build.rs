@@ -14,6 +14,7 @@ fn main() {
             "error" => println!("cargo:rustc-cfg=log_error"),
             "debug" => println!("cargo:rustc-cfg=log_debug"),
             "test" => println!("cargo:rustc-cfg=log_test"),
+            "none" => println!("cargo:rustc-cfg=log_none"),
             _ => println!("cargo:rustc-cfg=everything"),
         }
     } else {

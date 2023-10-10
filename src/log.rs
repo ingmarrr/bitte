@@ -1,3 +1,25 @@
+pub struct Logger {
+    pub level: Level,
+}
+
+impl Logger {
+    pub fn set_level(&mut self, level: Level) {
+        self.level = level;
+    }
+
+    pub fn get_level(&self) -> &Level {
+        &self.level
+    }
+
+    pub fn println(&self, level: Level, s: &str) {
+        println!("[{}] :: {}", level, s);
+    }
+
+    pub fn print_args(&self, level: Level, args: std::fmt::Arguments) {
+        println!("[{}] :: {}", level, args);
+    }
+}
+
 #[derive(PartialEq, Eq)]
 pub enum Level {
     INFO,
@@ -7,19 +29,20 @@ pub enum Level {
     DEBUG,
     LEX,
     PARSE,
+    None,
 }
 
 impl Level {
-    pub fn from_str(s: &str) -> Option<Level> {
-        match s {
-            "INFO" => Some(Level::INFO),
-            "WARN" => Some(Level::WARN),
-            "ERROR" => Some(Level::ERROR),
-            "TEST" => Some(Level::TEST),
-            "DEBUG" => Some(Level::DEBUG),
-            "LEX" => Some(Level::LEX),
-            "PARSE" => Some(Level::PARSE),
-            _ => None,
+    pub fn from_str(s: &str) -> Level {
+        match s.to_uppercase().as_str() {
+            "INFO" => Level::INFO,
+            "WARN" => Level::WARN,
+            "ERROR" => Level::ERROR,
+            "TEST" => Level::TEST,
+            "DEBUG" => Level::DEBUG,
+            "LEX" => Level::LEX,
+            "PARSE" => Level::PARSE,
+            _ => Level::None,
         }
     }
 }
@@ -34,16 +57,21 @@ impl std::fmt::Display for crate::log::Level {
             crate::log::Level::DEBUG => "debug",
             crate::log::Level::LEX => "lex",
             crate::log::Level::PARSE => "parse",
+            crate::log::Level::None => "none",
         };
         write!(f, "{}", s)
     }
+}
+
+pub fn info(s: &str) {
+    #[cfg(any(log_info, everything))]
+    crate::LOGGER.println(Level::INFO, s);
 }
 
 #[macro_export]
 macro_rules! log {
     ($level:expr, $($arg:tt)+) => {
         println!("[{}] :: {}", $level, format_args!($($arg)+))
-
     };
 }
 
@@ -51,7 +79,7 @@ macro_rules! log {
 macro_rules! info {
     ($($arg:tt)+) => {
         #[cfg(any(log_info, everything))]
-        println!("[{}] :: {}", crate::log::Level::INFO, format_args!($($arg)+))
+        crate::LOGGER.print_args(crate::log::Level::INFO, format_args!($($arg)+));
     };
 }
 
@@ -59,7 +87,7 @@ macro_rules! info {
 macro_rules! warn {
     ($($arg:tt)+) => {
         #[cfg(any(log_warn, everything))]
-        println!("[{}] :: {}", crate::log::Level::WARN, format_args!($($arg)+))
+        crate::LOGGER.print_args(crate::log::Level::WARN, format_args!($($arg)+));
     };
 }
 
@@ -67,7 +95,7 @@ macro_rules! warn {
 macro_rules! error {
     ($($arg:tt)+) => {
         #[cfg(any(log_error, everything))]
-        println!("[{}] :: {}", crate::log::Level::ERROR, format_args!($($arg)+))
+        crate::LOGGER.print_args(crate::log::Level::ERROR, format_args!($($arg)+));
     };
 }
 
@@ -75,7 +103,7 @@ macro_rules! error {
 macro_rules! debug {
     ($($arg:tt)+) => {
         #[cfg(any(log_debug, everything))]
-        println!("[{}] :: {}", crate::log::Level::DEBUG, format_args!($($arg)+))
+        crate::LOGGER.print_args(crate::log::Level::DEBUG, format_args!($($arg)+));
     };
 }
 
@@ -83,7 +111,7 @@ macro_rules! debug {
 macro_rules! test {
     ($($arg:tt)+) => {
         #[cfg(any(log_test, everything))]
-        println!("[{}] :: {}", crate::log::Level::TEST, format_args!($($arg)+))
+        crate::LOGGER.print_args(crate::log::Level::TEST, format_args!($($arg)+));
     };
 }
 
@@ -91,7 +119,7 @@ macro_rules! test {
 macro_rules! lex {
     ($($arg:tt)+) => {
         #[cfg(any(log_lex, everything))]
-        println!("[{}] :: {}", crate::log::Level::LEX, format_args!($($arg)+))
+        crate::LOGGER.print_args(crate::log::Level::LEX, format_args!($($arg)+));
     };
 }
 

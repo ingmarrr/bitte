@@ -2,7 +2,7 @@ use crate::ast::Ty;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expr {
-    Ident(Box<str>),
+    Ident(String),
     Lit(Lit),
     Fmt(FmtCall),
     Struct(StructCall),
@@ -22,19 +22,19 @@ impl Expr {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct FmtCall {
-    pub name: Box<str>,
-    pub fields: Vec<(Box<str>, Expr)>,
+    pub name: String,
+    pub fields: Vec<(String, Expr)>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct StructCall {
-    pub name: Box<str>,
-    pub fields: Vec<(Box<str>, Expr)>,
+    pub name: String,
+    pub fields: Vec<(String, Expr)>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Inserted {
-    pub string_parts: Vec<Box<str>>,
+    pub string_parts: Vec<String>,
     pub inserts: Vec<(usize, Insert)>,
 }
 
@@ -42,19 +42,19 @@ pub struct Inserted {
 pub enum Insert {
     For {
         expr: Box<Insert>,
-        item: Box<str>,
+        item: String,
         iter: List,
     },
-    Ident(Box<str>),
+    Ident(String),
     Fmt {
-        name: Box<str>,
+        name: String,
         args: Vec<Expr>,
     },
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Lit {
-    Str(Box<str>),
+    Str(String),
     Char(char),
     List(List),
 }
@@ -71,6 +71,6 @@ impl Lit {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum List {
-    LitList(Vec<Box<str>>),
-    Ident(Box<str>),
+    LitList(Vec<String>),
+    Ident(String),
 }

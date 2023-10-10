@@ -49,7 +49,7 @@ impl Lexer {
         Ok(tok)
     }
 
-    pub fn assert_look_ahead_ident(&mut self) -> Result<Box<str>, LexError> {
+    pub fn assert_look_ahead_ident(&mut self) -> Result<String, LexError> {
         if let None = self.tmpcx {
             self.tmpcx = Some(self.cx.clone());
         }
@@ -89,7 +89,7 @@ impl Lexer {
         Ok(tok)
     }
 
-    pub fn assert_next_ident(&mut self) -> Result<Box<str>, LexError> {
+    pub fn assert_next_ident(&mut self) -> Result<String, LexError> {
         if let Some(cx) = &self.tmpcx {
             self.cx = cx.clone();
             self.tmpcx = None;
@@ -159,9 +159,9 @@ impl Lexer {
                 '"' => {
                     self.take();
                     if dollar_started {
-                        return Ok(Tok::DollarStarted(buf.into_boxed_str()));
+                        return Ok(Tok::DollarStarted(buf));
                     }
-                    return Ok(Tok::String(buf.into_boxed_str()));
+                    return Ok(Tok::String(buf));
                 }
                 '\\' => {
                     let next = self.peek();
@@ -188,9 +188,9 @@ impl Lexer {
                 '$' => {
                     self.take();
                     if dollar_started {
-                        return Ok(Tok::InBetween(buf.into_boxed_str()));
+                        return Ok(Tok::InBetween(buf));
                     }
-                    return Ok(Tok::DollarTerminated(buf.into_boxed_str()));
+                    return Ok(Tok::DollarTerminated(buf));
                 }
                 _ => {
                     self.take();
@@ -290,7 +290,7 @@ mod test {
     lex_test!(
         lex_str,
         "\"hello world.\"",
-        Ok(Tok::String("hello world.".to_owned().into_boxed_str()))
+        Ok(Tok::String("hello world.".to_owned()))
     );
     lex_test!(
         lex_str_unterminated,
@@ -300,16 +300,12 @@ mod test {
     lex_test!(
         lex_str_insert,
         "\"hello $world\"",
-        Ok(Tok::DollarTerminated("hello ".to_owned().into_boxed_str()))
+        Ok(Tok::DollarTerminated("hello ".to_owned()))
     );
     lex_test!(lex_struct, "struct", Ok(Tok::Struct));
     lex_test!(lex_fun, "fmt", Ok(Tok::Fmt));
     lex_test!(lex_let, "let", Ok(Tok::Let));
-    lex_test!(
-        lex_ident,
-        "hello",
-        Ok(Tok::Ident("hello".to_owned().into_boxed_str()))
-    );
+    lex_test!(lex_ident, "hello", Ok(Tok::Ident("hello".to_owned())));
 
     #[test]
     fn lex_symbols() {

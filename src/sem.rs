@@ -10,14 +10,14 @@ use crate::{
 #[derive(Debug)]
 pub struct Analyzer {
     errs: Vec<SemanticError>,
-    sym_table: SymTable,
-    requireds: Vec<(Box<str>, Ty)>,
-    optionals: Vec<(Box<str>, Ty, Expr)>,
-    main_struct: Option<Struct>,
-    lets: Vec<(String, String)>,
-    structs: Vec<Struct>,
-    fmts: Vec<Fmt>,
-    allow_requireds: bool,
+    pub sym_table: SymTable,
+    pub requireds: Vec<(String, Ty)>,
+    optionals: Vec<(String, Ty, Expr)>,
+    pub main_struct: Option<Struct>,
+    pub lets: Vec<Let>,
+    pub structs: Vec<Struct>,
+    allow_args: bool,
+    pub fmts: Vec<Fmt>,
 }
 
 impl Analyzer {
@@ -31,26 +31,50 @@ impl Analyzer {
             lets: Vec::new(),
             structs: Vec::new(),
             fmts: Vec::new(),
-            allow_requireds: true,
+            allow_args: true,
         }
     }
 
-    pub fn analyze(&mut self, decls: Vec<Decl>) -> Result<(), Vec<SemanticError>> {
+    pub fn has_req(&self, name: String, ty: Ty) -> bool {
+        self.requireds.contains(&(name, ty))
+    }
+
+    pub fn analyze_all(&mut self, decls: Vec<Decl>) -> Option<()> {
         let (sym_table, errs) = SymTable::from_decls(&decls);
         self.sym_table = sym_table;
         self.errs = errs;
         for decl in decls {
-            if !decl.is_req() {
-                self.allow_requireds = false;
+            if !decl.is_arg() {
+                self.allow_args = false;
             }
             if let Err(err) = self.analyze_decl(decl) {
                 self.errs.push(err);
             }
         }
+        if self.main_struct.is_none() {
+            self.errs.push(SemanticError::NoMainStruct);
+        }
         if self.errs.is_empty() {
-            Ok(())
+            Some(())
         } else {
-            Err(self.errs.clone())
+            None
+        }
+    }
+
+    pub fn analyze(&mut self, decl: Decl) -> Option<()> {
+        let (syms, mut errs) = self.sym_table.sym(&decl);
+        self.errs.append(&mut errs);
+        if let Err(e) = self.sym_table.insert_all(syms) {
+            self.errs.extend(e);
+        }
+        let err = self.analyze_decl(decl);
+        if let Err(err) = err {
+            self.errs.push(err);
+        }
+        if self.errs.is_empty() {
+            Some(())
+        } else {
+            None
         }
     }
 
@@ -77,53 +101,52 @@ impl Analyzer {
 
     fn analyze_let(&mut self, let_decl: Let) -> Result<(), SemanticError> {
         self.analyze_expr(let_decl.expr, let_decl.ty, Scope::Global)?;
-        self.lets
-            .push((let_decl.name.to_string(), let_decl.ty.to_string()));
+        self.lets.push(let_decl);
         Ok(())
     }
 
-    fn analyze_struct(&mut self, s: Struct) -> Result<(), SemanticError> {
-        for (_, expr) in s.files.clone() {
+    fn analyze_struct(&mut self, struc: Struct) -> Result<(), SemanticError> {
+        for (_, expr) in struc.files.clone() {
             match expr {
-                Some(expr) => self.analyze_str_expr(expr, Scope::Local(s.name.to_owned()))?,
+                Some(expr) => self.analyze_str_expr(expr, Scope::Local(struc.name.to_owned()))?,
                 None => {}
             }
         }
 
-        if *s.name == *"main" {
+        if *struc.name == *"main" {
             if self.main_struct.is_some() {
-                return Err(SemanticError::AlreadyExists(s.name.to_string()));
+                return Err(SemanticError::AlreadyExists(struc.name.to_string()));
             }
-            self.main_struct = Some(s);
+            self.main_struct = Some(struc);
             return Ok(());
         }
-        self.structs.push(s);
+        self.structs.push(struc);
         Ok(())
     }
 
-    fn analyze_required(&mut self, name: Box<str>, ty: Ty) -> Result<(), SemanticError> {
+    fn analyze_required(&mut self, name: String, ty: Ty) -> Result<(), SemanticError> {
         info!("Required: {} :: {}", name, ty);
-        if self.allow_requireds {
+        if self.allow_args {
             self.requireds.push((name, ty));
             Ok(())
         } else {
-            Err(SemanticError::RequiredsOnlyAtTop(name.to_string()))
+            Err(SemanticError::RequiredsOnlyAtTop(name))
         }
     }
 
     fn analyze_optional(
         &mut self,
-        name: Box<str>,
+        name: String,
         ty: Ty,
         default: Expr,
     ) -> Result<(), SemanticError> {
         info!("Optional: {} :: {}", name, ty);
-        if self.allow_requireds {
+        if self.allow_args {
             self.analyze_expr(default.clone(), ty, Scope::Global)?;
             self.optionals.push((name, ty, default));
             Ok(())
         } else {
-            return Err(SemanticError::RequiredsOnlyAtTop(name.to_string()));
+            Err(SemanticError::RequiredsOnlyAtTop(name))
         }
     }
 
@@ -153,7 +176,7 @@ impl Analyzer {
                     Ty::Str => Ok(()),
                     ty => Err(SemanticError::InvalidType(ty.to_string())),
                 },
-                None => Err(SemanticError::UnknownType(i.as_ref().to_owned())),
+                None => Err(SemanticError::UnknownType(i.to_owned())),
             },
             Insert::Fmt { name, args } => {
                 match self.sym_table.get(&Key(name.to_owned(), scope.clone())) {
@@ -175,7 +198,7 @@ impl Analyzer {
                         }
                         ty => Err(SemanticError::InvalidType(ty.to_string())),
                     },
-                    None => Err(SemanticError::UnknownFmt(name.into_string())),
+                    None => Err(SemanticError::UnknownFmt(name)),
                 }
             }
         }
@@ -183,8 +206,8 @@ impl Analyzer {
 
     fn analyze_fmt_expr(
         &self,
-        ident: &Box<str>,
-        fields: &Vec<(Box<str>, Expr)>,
+        ident: &String,
+        fields: &Vec<(String, Expr)>,
         scope: Scope,
     ) -> Result<(), SemanticError> {
         match self.sym_table.get(&Key(ident.to_owned(), scope.clone())) {
@@ -213,16 +236,11 @@ impl Analyzer {
                 }
                 ty => Err(SemanticError::InvalidType(ty.to_string())),
             },
-            None => Err(SemanticError::UnknownFmt(ident.as_ref().to_owned())),
+            None => Err(SemanticError::UnknownFmt(ident.to_owned())),
         }
     }
 
-    fn analyze_ident_expr(
-        &self,
-        ident: &Box<str>,
-        ty: Ty,
-        scope: Scope,
-    ) -> Result<(), SemanticError> {
+    fn analyze_ident_expr(&self, ident: &str, ty: Ty, scope: Scope) -> Result<(), SemanticError> {
         match self.sym_table.get(&Key(ident.to_owned(), scope.clone())) {
             Some(sym) => match sym {
                 Sym {
@@ -236,7 +254,7 @@ impl Analyzer {
                             Scope::Local(local) => match Scope::Local(local.to_owned()) == scope {
                                 true => Ok(()),
                                 false => Err(SemanticError::OutOfScope(
-                                    ident.as_ref().to_owned(),
+                                    ident.to_owned(),
                                     scope.to_string(),
                                     local.to_string(),
                                 )),
@@ -247,18 +265,18 @@ impl Analyzer {
                     }
                 }
             },
-            None => Err(SemanticError::UnknownType(ident.as_ref().to_owned())),
+            None => Err(SemanticError::UnknownType(ident.to_owned())),
         }
     }
 
     fn analyze_str_expr(&self, expr: Expr, scope: Scope) -> Result<(), SemanticError> {
         match expr {
-            Expr::Ident(i) => match self.sym_table.get(&Key(i.to_owned(), Scope::Global)) {
+            Expr::Ident(i) => match self.sym_table.get(&Key(i.clone(), Scope::Global)) {
                 Some(sym) => match sym.ty {
                     crate::ast::Ty::Str => Ok(()),
                     ty => Err(SemanticError::InvalidType(ty.to_string())),
                 },
-                None => Err(SemanticError::UnknownType(i.into_string())),
+                None => Err(SemanticError::UnknownType(i)),
             },
             Expr::Lit(lit) => match lit {
                 Lit::Str(_) | Lit::Char(_) => Ok(()),
@@ -275,7 +293,7 @@ impl Analyzer {
                         }
                         ty => Err(SemanticError::InvalidType(ty.to_string())),
                     },
-                    None => Err(SemanticError::UnknownFmt(name.as_ref().to_owned())),
+                    None => Err(SemanticError::UnknownFmt(name.to_owned())),
                 }
             }
             Expr::Inserted(Inserted { inserts, .. }) => {
