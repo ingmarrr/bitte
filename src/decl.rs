@@ -64,6 +64,11 @@ pub struct Fmt {
     pub inserts: Vec<(usize, Insert)>,
 }
 
+pub enum Requirement {
+    Required(Required),
+    Optional(Optional),
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Required {
     pub name: String,

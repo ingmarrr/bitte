@@ -1,15 +1,15 @@
 #[inline]
-pub fn is_hori_ws(c: char) -> bool {
-    c == ' ' || c == '\t'
+pub fn is_hori_ws(c: u8) -> bool {
+    c as char == ' ' || c as char == '\t'
 }
 
 #[inline]
-pub fn is_vert_ws(c: char) -> bool {
-    c == '\n' || c == '\r'
+pub fn is_vert_ws(c: u8) -> bool {
+    c as char == '\n'
 }
 
 #[inline]
-pub fn is_ws(c: char) -> bool {
+pub fn is_ws(c: u8) -> bool {
     is_vert_ws(c) || is_hori_ws(c)
 }
 

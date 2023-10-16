@@ -1,287 +1,199 @@
-use crate::err::LexError;
+use crate::charset::{is_all_num, is_ident};
 
-#[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(PartialEq))]
+#[derive(Debug, Clone)]
+pub struct Source<'a> {
+    /// Beginning offset of any token
+    pub bix: usize,
+    /// Column number of any token
+    pub col: usize,
+    /// Line number of any token
+    pub line: usize,
+    /// Source string
+    pub src: &'a [u8],
+}
+
+impl<'a> std::fmt::Display for Source<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let src_str = std::str::from_utf8(self.src).map_err(|_| std::fmt::Error)?;
+
+        write!(f, "{}:{} - {}", self.line, self.col, src_str)
+    }
+}
+
+impl<'a> Source<'a> {
+    pub fn range(&self) -> std::ops::Range<usize> {
+        self.bix..self.src.len()
+    }
+}
+
+pub struct Token<'a> {
+    pub src: Source<'a>,
+    pub val: Option<&'a str>,
+    pub kind: TokKind,
+}
+
 pub enum TokKind {
-    FilePath,
-    String,
-    InsertTerminated,
-    InsertStarted,
+    Keyword(Keyword),
+    Symbol(Symbol),
+    Group(Opener, Closer),
+    Literal(Literal),
     Ident,
-    Char,
-    Num,
-    SQ,
-    DQ,
-    Dollar,
-    LBrace,
-    RBrace,
-    LBracket,
-    RBracket,
-    LParen,
-    RParen,
-    Eq,
-    Plus,
-    Colon,
-    Comma,
-    Semi,
-    Dot,
-    Req,
-    Opt,
+    Error,
+    SOF,
+    EOF,
+    Invalid,
+}
+
+impl From<u8> for TokKind {
+    fn from(value: u8) -> Self {
+        match value {
+            b'@' => TokKind::Symbol(Symbol::At),
+            b'\\' => TokKind::Symbol(Symbol::Backslash),
+            b':' => TokKind::Symbol(Symbol::Colon),
+            b';' => TokKind::Symbol(Symbol::Semi),
+            b'=' => TokKind::Symbol(Symbol::Equal),
+            b'.' => TokKind::Symbol(Symbol::Dot),
+            b',' => TokKind::Symbol(Symbol::Comma),
+            b'$' => TokKind::Symbol(Symbol::Dollar),
+
+            b'"' => TokKind::Group(Opener::DQuote, Closer::DQuote),
+            b'{' | b'}' => TokKind::Group(Opener::LCurly, Closer::RCurly),
+            b'[' | b']' => TokKind::Group(Opener::LSquare, Closer::RSquare),
+            b'(' | b')' => TokKind::Group(Opener::LParen, Closer::RParen),
+
+            _ => TokKind::Invalid,
+        }
+    }
+}
+
+impl From<&str> for TokKind {
+    fn from(kind: &str) -> TokKind {
+        match kind {
+            "let" => TokKind::Keyword(Keyword::Let),
+            "struct" => TokKind::Keyword(Keyword::Struct),
+            "fmt" => TokKind::Keyword(Keyword::Fmt),
+            "req" => TokKind::Keyword(Keyword::Req),
+            "opt" => TokKind::Keyword(Keyword::Opt),
+            "for" => TokKind::Keyword(Keyword::For),
+            "in" => TokKind::Keyword(Keyword::In),
+
+            "@" => TokKind::Symbol(Symbol::At),
+            "\\" => TokKind::Symbol(Symbol::Backslash),
+            ":" => TokKind::Symbol(Symbol::Colon),
+            ";" => TokKind::Symbol(Symbol::Semi),
+            "=" => TokKind::Symbol(Symbol::Equal),
+            "." => TokKind::Symbol(Symbol::Dot),
+            "," => TokKind::Symbol(Symbol::Comma),
+            "$" => TokKind::Symbol(Symbol::Dollar),
+
+            "\"" => TokKind::Group(Opener::DQuote, Closer::DQuote),
+            "{" | "}" => TokKind::Group(Opener::LCurly, Closer::RCurly),
+            "[" | "]" => TokKind::Group(Opener::LSquare, Closer::RSquare),
+            "(" | ")" => TokKind::Group(Opener::LParen, Closer::RParen),
+
+            st if is_ident(st) => TokKind::Ident,
+            st if is_all_num(st) => TokKind::Literal(Literal::Int),
+
+            _ => TokKind::Invalid,
+        }
+    }
+}
+
+pub enum Keyword {
+    Let,
     Struct,
     Fmt,
-    Let,
-    For,
-    In,
-    Invalid,
-    EOF,
-}
-
-impl std::fmt::Display for TokKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TokKind::FilePath => f.write_str("file path"),
-            TokKind::String => f.write_str("string"),
-            TokKind::InsertTerminated => f.write_str("insert terminated"),
-            TokKind::InsertStarted => f.write_str("insert started"),
-            TokKind::Ident => f.write_str("ident"),
-            TokKind::Char => f.write_str("char"),
-            TokKind::Num => f.write_str("num"),
-            TokKind::SQ => f.write_str("'"),
-            TokKind::DQ => f.write_str("\""),
-            TokKind::Dollar => f.write_str("$"),
-            TokKind::LBrace => f.write_str("{"),
-            TokKind::RBrace => f.write_str("}"),
-            TokKind::LBracket => f.write_str("["),
-            TokKind::RBracket => f.write_str("]"),
-            TokKind::LParen => f.write_str("("),
-            TokKind::RParen => f.write_str(")"),
-            TokKind::Eq => f.write_str("="),
-            TokKind::Plus => f.write_str("+"),
-            TokKind::Colon => f.write_str(":"),
-            TokKind::Comma => f.write_str(","),
-            TokKind::Semi => f.write_str(";"),
-            TokKind::Dot => f.write_str("."),
-            TokKind::Req => f.write_str("req"),
-            TokKind::Opt => f.write_str("opt"),
-            TokKind::Struct => f.write_str("struct"),
-            TokKind::Fmt => f.write_str("fmt"),
-            TokKind::Let => f.write_str("let"),
-            TokKind::For => f.write_str("for"),
-            TokKind::In => f.write_str("in"),
-            TokKind::Invalid => f.write_str("invalid token"),
-            TokKind::EOF => f.write_str("EOF"),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Tok {
-    FilePath(String),
-    String(String),
-    DollarTerminated(String),
-    DollarStarted(String),
-    InBetween(String),
-    Ident(String),
-    Char(char),
-    Num(String),
-
-    SQ,
-    DQ,
-    Dollar,
-
-    LBrace,
-    RBrace,
-    LBracket,
-    RBracket,
-    LParen,
-    RParen,
-
-    Eq,
-    Plus,
-    Colon,
-    Comma,
-    Semi,
-    Dot,
-
     Req,
     Opt,
-
-    Struct,
-    Fmt,
-    Let,
     For,
     In,
-    Invalid,
-    EOF,
 }
 
-impl Tok {
-    pub fn is_str(&self) -> bool {
-        match self {
-            Tok::String(_) | Tok::DollarTerminated(_) => true,
-            _ => false,
+impl TryFrom<&str> for Keyword {
+    type Error = ();
+
+    fn try_from(kind: &str) -> Result<Keyword, Self::Error> {
+        match kind {
+            "let" => Ok(Keyword::Let),
+            "struct" => Ok(Keyword::Struct),
+            "fmt" => Ok(Keyword::Fmt),
+            "req" => Ok(Keyword::Req),
+            "opt" => Ok(Keyword::Opt),
+            "for" => Ok(Keyword::For),
+            "in" => Ok(Keyword::In),
+            _ => Err(()),
         }
     }
 }
 
-impl PartialEq<TokKind> for Tok {
-    fn eq(&self, other: &TokKind) -> bool {
-        match self {
-            Tok::FilePath(_) if other == &TokKind::FilePath => true,
-            Tok::String(_) if other == &TokKind::String => true,
-            Tok::DollarTerminated(_) if other == &TokKind::InsertTerminated => true,
-            Tok::DollarStarted(_) if other == &TokKind::InsertStarted => true,
-            Tok::Ident(_) if other == &TokKind::Ident => true,
-            Tok::Char(_) if other == &TokKind::Char => true,
-            Tok::Num(_) if other == &TokKind::Num => true,
-            Tok::SQ if other == &TokKind::SQ => true,
-            Tok::DQ if other == &TokKind::DQ => true,
-            Tok::Dollar if other == &TokKind::Dollar => true,
-            Tok::LBrace if other == &TokKind::LBrace => true,
-            Tok::RBrace if other == &TokKind::RBrace => true,
-            Tok::LBracket if other == &TokKind::LBracket => true,
-            Tok::RBracket if other == &TokKind::RBracket => true,
-            Tok::LParen if other == &TokKind::LParen => true,
-            Tok::RParen if other == &TokKind::RParen => true,
-            Tok::Eq if other == &TokKind::Eq => true,
-            Tok::Plus if other == &TokKind::Plus => true,
-            Tok::Colon if other == &TokKind::Colon => true,
-            Tok::Comma if other == &TokKind::Comma => true,
-            Tok::Semi if other == &TokKind::Semi => true,
-            Tok::Dot if other == &TokKind::Dot => true,
-            Tok::Req if other == &TokKind::Req => true,
-            Tok::Opt if other == &TokKind::Opt => true,
-            Tok::Struct if other == &TokKind::Struct => true,
-            Tok::Fmt if other == &TokKind::Fmt => true,
-            Tok::Let if other == &TokKind::Let => true,
-            Tok::For if other == &TokKind::For => true,
-            Tok::In if other == &TokKind::In => true,
-            Tok::Invalid if other == &TokKind::Invalid => true,
-            Tok::EOF if other == &TokKind::EOF => true,
-            _ => false,
-        }
-    }
+pub enum Symbol {
+    At,
+    Backslash,
+    Colon,
+    Semi,
+    Comma,
+    Equal,
+    Dot,
+    Dollar,
 }
 
-impl std::fmt::Display for Tok {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Tok::FilePath(body) => f.write_str(&body),
-            Tok::String(body) => f.write_str(&body),
-            Tok::DollarStarted(body) => f.write_str(&body),
-            Tok::DollarTerminated(body) => f.write_str(&body),
-            Tok::InBetween(body) => f.write_str(&body),
-            Tok::Ident(i) => f.write_str(&i),
-            Tok::Char(c) => f.write_str(&c.to_string()),
-            Tok::Num(n) => f.write_str(&n),
-            Tok::SQ => f.write_str("'"),
-            Tok::DQ => f.write_str("\""),
-            Tok::Dollar => f.write_str("$"),
-            Tok::LBrace => f.write_str("{"),
-            Tok::RBrace => f.write_str("}"),
-            Tok::LBracket => f.write_str("["),
-            Tok::RBracket => f.write_str("]"),
-            Tok::LParen => f.write_str("("),
-            Tok::RParen => f.write_str(")"),
-            Tok::Eq => f.write_str("="),
-            Tok::Plus => f.write_str("+"),
-            Tok::Colon => f.write_str(":"),
-            Tok::Dot => f.write_str("."),
-            Tok::Comma => f.write_str(","),
-            Tok::Semi => f.write_str(";"),
-            Tok::Req => f.write_str("req"),
-            Tok::Opt => f.write_str("opt"),
-            Tok::Struct => f.write_str("struct"),
-            Tok::Fmt => f.write_str("fmt"),
-            Tok::Let => f.write_str("let"),
-            Tok::For => f.write_str("for"),
-            Tok::In => f.write_str("in"),
-            Tok::EOF => f.write_str("\0"),
-            Tok::Invalid => f.write_str("invalid token"),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum InsertKw {
-    For { name: String, fmt: Box<Tok> },
-    Some(String),
-    Number(usize),
-    None,
-}
-
-impl Tok {
-    pub fn is_init(&self) -> bool {
-        match self {
-            Tok::SQ | Tok::DQ | Tok::LBrace | Tok::LBracket | Tok::LParen | Tok::Char(_) => true,
-            _ => false,
-        }
-    }
-}
-impl From<char> for Tok {
-    fn from(value: char) -> Self {
-        match value {
-            '\'' => Tok::SQ,
-            '"' => Tok::DQ,
-            '$' => Tok::Dollar,
-            '{' => Tok::LBrace,
-            '}' => Tok::RBrace,
-            '[' => Tok::LBracket,
-            ']' => Tok::RBracket,
-            '(' => Tok::LParen,
-            ')' => Tok::RParen,
-            '=' => Tok::Eq,
-            '+' => Tok::Plus,
-            '?' => Tok::Opt,
-            '!' => Tok::Req,
-            ':' => Tok::Colon,
-            ',' => Tok::Comma,
-            ';' => Tok::Semi,
-            '.' => Tok::Dot,
-            '\0' => Tok::EOF,
-            c if value.is_alphabetic() => Tok::Char(c),
-            _ => Tok::Invalid,
-        }
-    }
-}
-
-impl From<String> for Tok {
-    fn from(value: String) -> Self {
-        match value.as_str() {
-            "struct" => Tok::Struct,
-            "let" => Tok::Let,
-            "for" => Tok::For,
-            "fmt" => Tok::Fmt,
-            "in" => Tok::In,
-            "req" => Tok::Req,
-            "opt" => Tok::Opt,
-            _ if value.contains('.') => Tok::FilePath(value),
-            _ => Tok::Ident(value),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum InitTok {
-    SQ,
-    DQ,
-    LBrace,
-    LBracket,
+pub enum Opener {
+    DQuote,
+    DoubleLCurly,
+    LCurly,
+    LSquare,
     LParen,
-    Char,
 }
 
-impl TryFrom<Tok> for InitTok {
-    type Error = LexError;
+impl TryFrom<&str> for Opener {
+    type Error = ();
 
-    fn try_from(value: Tok) -> Result<Self, Self::Error> {
-        match value {
-            Tok::SQ => Ok(InitTok::SQ),
-            Tok::DQ => Ok(InitTok::DQ),
-            Tok::LBrace => Ok(InitTok::LBrace),
-            Tok::LBracket => Ok(InitTok::LBracket),
-            Tok::LParen => Ok(InitTok::LParen),
-            Tok::Char(_) => Ok(InitTok::Char),
-            _ => Err(LexError::NotInit),
+    fn try_from(closer: &str) -> Result<Opener, Self::Error> {
+        match closer {
+            "\"" => Ok(Opener::DQuote),
+            "{" => Ok(Opener::LCurly),
+            "{$" => Ok(Opener::DoubleLCurly),
+            "[" => Ok(Opener::LSquare),
+            "(" => Ok(Opener::LParen),
+            _ => Err(()),
         }
     }
+}
+
+pub enum Closer {
+    DQuote,
+    DoubleRCurly,
+    RCurly,
+    RSquare,
+    RParen,
+}
+
+impl TryFrom<&str> for Closer {
+    type Error = ();
+
+    fn try_from(closer: &str) -> Result<Closer, Self::Error> {
+        match closer {
+            "\"" => Ok(Closer::DQuote),
+            "}" => Ok(Closer::RCurly),
+            "$}" => Ok(Closer::DoubleRCurly),
+            "]" => Ok(Closer::RSquare),
+            ")" => Ok(Closer::RParen),
+            _ => Err(()),
+        }
+    }
+}
+
+pub enum Literal {
+    String(StringTy),
+    List,
+    Int,
+    Tuple,
+}
+
+pub enum StringTy {
+    InsertEnded,
+    InBetween,
+    InsertStarted,
+    Literal,
 }

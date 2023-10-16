@@ -1,41 +1,43 @@
 use crate::{
     ast::Ty,
     decl::{Decl, Fmt, Let, Required, Struct},
-    err::ParseError,
+    err::{ParseError, Trace},
     error,
     expr::{Expr, FmtCall, Insert, Inserted, List, Lit, StructCall},
     parse,
-    token::{Tok, TokKind},
+    token::{TokKind, Token},
 };
-pub struct Parser {
-    lx: crate::lex::Lexer,
+pub struct Parser<'a> {
+    lx: crate::lexer::Lexer<'a>,
 }
 
-impl Parser {
-    pub fn new(lx: crate::lex::Lexer) -> Self {
+impl<'a> Parser<'a> {
+    pub fn new(lx: crate::lexer::Lexer<'a>) -> Self {
         Self { lx }
     }
 
-    pub fn parse(&mut self) -> Result<Vec<Decl>, ParseError> {
+    pub fn parse(&mut self) -> Result<Vec<Decl>, Trace<ParseError>> {
         let mut decls = Vec::new();
+
+        use TokKind::*;
 
         loop {
             decls.push(match self.lx.look_ahead()? {
-                Tok::Struct => self.parse_struct()?,
-                Tok::Let => self.parse_let()?,
-                Tok::Fmt => self.parse_fmt()?,
-                Tok::Req => self.parse_required()?,
-                Tok::Opt => self.parse_optional()?,
-                Tok::Ident(i) => {
+                Struct => self.parse_struct()?,
+                Let => self.parse_let()?,
+                Fmt => self.parse_fmt()?,
+                Req => self.parse_required()?,
+                Opt => self.parse_optional()?,
+                Ident(i) => {
                     parse!("Found ident :: {}", i);
                     return Err(ParseError::NoTopLevelExpressionsAllowed);
                 }
-                Tok::EOF => return Ok(decls),
+                EOF => return Ok(decls),
                 _t => {
                     error!("Parsing :: {:#?}", _t);
                     return Err(ParseError::Expected {
-                        line: self.lx.cx.line,
-                        col: self.lx.cx.col,
+                        line: self.lx.pos.line,
+                        col: self.lx.pos.col,
                         expected: "top-level declaration".to_string(),
                         found: _t.to_string(),
                     });
@@ -56,14 +58,14 @@ impl Parser {
                 return Err(ParseError::NoTopLevelExpressionsAllowed);
             }
             Tok::EOF => Err(ParseError::Expected {
-                line: self.lx.cx.line,
-                col: self.lx.cx.col,
+                line: self.lx.pos.line,
+                col: self.lx.pos.col,
                 expected: "top-level declaration".to_string(),
                 found: "EOF".to_string(),
             }),
             _t => Err(ParseError::Expected {
-                line: self.lx.cx.line,
-                col: self.lx.cx.col,
+                line: self.lx.pos.line,
+                col: self.lx.pos.col,
                 expected: "top-level declaration".to_string(),
                 found: _t.to_string(),
             }),
@@ -122,8 +124,8 @@ impl Parser {
             }));
         }
         Err(ParseError::Expected {
-            line: self.lx.cx.line,
-            col: self.lx.cx.col,
+            line: self.lx.pos.line,
+            col: self.lx.pos.col,
             expected: "string".to_string(),
             found: "invalid expression".to_string(),
         })
@@ -149,8 +151,8 @@ impl Parser {
                 }
                 t => {
                     return Err(ParseError::Expected {
-                        line: self.lx.cx.line,
-                        col: self.lx.cx.col,
+                        line: self.lx.pos.line,
+                        col: self.lx.pos.col,
                         expected: "comma or `)`".to_string(),
                         found: t.to_string(),
                     })
@@ -222,8 +224,8 @@ impl Parser {
                             Tok::Comma | Tok::RBrace => files.push((path, None)),
                             _ => {
                                 return Err(ParseError::Expected {
-                                    line: self.lx.cx.line,
-                                    col: self.lx.cx.col,
+                                    line: self.lx.pos.line,
+                                    col: self.lx.pos.col,
                                     expected: "`:`, `,` or `}}`".to_string(),
                                     found: self.lx.look_ahead()?.to_string(),
                                 })
@@ -235,8 +237,8 @@ impl Parser {
                     tok => {
                         parse!("Error Parsing :: {:?}", tok);
                         return Err(ParseError::Expected {
-                            line: self.lx.cx.line,
-                            col: self.lx.cx.col,
+                            line: self.lx.pos.line,
+                            col: self.lx.pos.col,
                             expected: "`{`, file path or struct name".to_string(),
                             found: tok.to_string(),
                         });
@@ -244,15 +246,15 @@ impl Parser {
                 }
             },
             _ => Err(ParseError::Expected {
-                line: self.lx.cx.line,
-                col: self.lx.cx.col,
+                line: self.lx.pos.line,
+                col: self.lx.pos.col,
                 expected: "struct opening/ending or file ending".to_string(),
                 found: self.lx.look_ahead()?.to_string(),
             }),
         }
     }
 
-    fn parse_let(&mut self) -> Result<Decl, ParseError> {
+    fn parse_let(&mut self) -> Result<Decl, Trace<ParseError>> {
         parse!("Parsing let");
         let _ = self.lx.assert_next_token(TokKind::Let)?;
         let name = match self.lx.assert_next_token(TokKind::Ident)? {
@@ -279,8 +281,8 @@ impl Parser {
                 Expr::Fmt { .. } | Expr::Inserted { .. } | Expr::Ident(_) => Ty::Str,
                 _ => {
                     return Err(ParseError::Expected {
-                        line: self.lx.cx.line,
-                        col: self.lx.cx.col,
+                        line: self.lx.pos.line,
+                        col: self.lx.pos.col,
                         expected: "type".to_string(),
                         found: "invalid expression".to_string(),
                     })
@@ -360,8 +362,8 @@ impl Parser {
                 Tok::Ident(i) => inserts.push((ix, self.parse_insertion(i)?)),
                 t => {
                     return Err(ParseError::InvalidToken {
-                        line: self.lx.cx.line,
-                        col: self.lx.cx.col,
+                        line: self.lx.pos.line,
+                        col: self.lx.pos.col,
                         tok: t.to_string(),
                     })
                 }
@@ -429,8 +431,8 @@ impl Parser {
                 t => {
                     parse!("Parsing list :: {:#?}", t);
                     return Err(ParseError::Expected {
-                        line: self.lx.cx.line,
-                        col: self.lx.cx.col,
+                        line: self.lx.pos.line,
+                        col: self.lx.pos.col,
                         expected: "string".to_string(),
                         found: t.to_string(),
                     });
@@ -449,8 +451,8 @@ impl Parser {
                 _ => Ok(Ty::Struct),
             },
             t => Err(ParseError::Expected {
-                line: self.lx.cx.line,
-                col: self.lx.cx.col,
+                line: self.lx.pos.line,
+                col: self.lx.pos.col,
                 expected: "type".to_string(),
                 found: t.to_string(),
             }),
@@ -461,7 +463,7 @@ impl Parser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lex::Lexer;
+    use crate::lexer::Lexer;
     use crate::test;
 
     macro_rules! ps_test {
@@ -471,7 +473,7 @@ mod tests {
                    fn $name() {
                        test!("Testing `{}` = `{}`", stringify!($name), $inp);
                        parse!("Testing `{}` = `{}`", stringify!($name), $inp);
-                       let lex = Lexer::new($inp);
+                       let lex = Lexer::new($inp.as_bytes());
                        let mut parser = Parser::new(lex);
                        let def = parser.parse();
                        assert_eq!(def, $expected);
@@ -482,7 +484,7 @@ mod tests {
                #[test]
                fn $name() {
                    test!(PAR, "Testing `{}` = `{}`", stringify!($name), $inp);
-                   let lex = Lex::new($inp);
+                   let lex = Lex::new($inp.as_bytes());
                    let mut parser = Parser::new(lex);
                    let def = parser.parse();
                    assert_eq!(def, $expected);
@@ -678,7 +680,7 @@ mod tests {
     #[test]
     fn test_let() {
         let inp = "let a = \"hello\"";
-        let lex = Lexer::new(inp);
+        let lex = Lexer::new(inp.as_bytes());
         let mut par = Parser::new(lex);
         let out = par.parse();
         let exp = Ok(vec![Decl::Let(Let {

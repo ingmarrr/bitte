@@ -1,71 +1,77 @@
 use std::error::Error;
 
-use crate::lexer::Cx;
+use crate::token::Source;
 
 pub enum LxErrKind {
     InvalidToken,
     InvalidCharacter,
+    InvalidUtf8,
     UnexpectedEOF,
     UnterminatedString,
 }
 
+#[derive(Debug, thiserror::Error, PartialEq, Clone)]
+pub enum LxErr {
+    #[error("Invalid token :: {0}")]
+    InvalidToken(String),
+    #[error("Invalid character :: {0}")]
+    InvalidCharacter(String),
+    #[error("Invalid Utf8 :: {0}")]
+    InvalidUtf8(String),
+    #[error("Unexpected EOF :: {0}")]
+    UnexpectedEOF(String),
+    #[error("Unterminated String :: {0}")]
+    Unterminated(String),
+}
+
 #[cfg_attr(test, derive(PartialEq))]
 #[derive(Debug, thiserror::Error)]
-pub enum LxError {
-    #[error("Invalid token :: {0}")]
-    InvalidToken(Cx),
-    #[error("Invalid character :: {0}")]
-    InvalidCharacter(Cx),
-    #[error("Unexpected EOF :: {0}")]
-    UnexpectedEOF(Cx),
-    #[error("Unterminated String :: {0}")]
-    Unterminated(Cx),
-}
+pub enum SynErr {}
 
-#[derive(Debug, thiserror::Error, PartialEq, Clone)]
-pub enum LexError {
-    #[error("L: {line} | C: {col} :: Invalid character :: {ch}")]
-    InvalidCharacter { line: usize, col: usize, ch: char },
+// #[derive(Debug, thiserror::Error, PartialEq, Clone)]
+// pub enum LexError {
+//     #[error("L: {line} | C: {col} :: Invalid character :: {ch}")]
+//     InvalidCharacter { line: usize, col: usize, ch: char },
 
-    #[error("L: {line} | C: {col} :: Invalid token :: {tok}")]
-    InvalidToken {
-        line: usize,
-        col: usize,
-        tok: String,
-    },
+//     #[error("L: {line} | C: {col} :: Invalid token :: {tok}")]
+//     InvalidToken {
+//         line: usize,
+//         col: usize,
+//         tok: String,
+//     },
 
-    #[error("L: {line} | C: {col} :: Invalid insert keyword (expected `for` or valid identifier)")]
-    InvalidInsertKeyword { line: usize, col: usize },
+//     #[error("L: {line} | C: {col} :: Invalid insert keyword (expected `for` or valid identifier)")]
+//     InvalidInsertKeyword { line: usize, col: usize },
 
-    #[error("L: {line} | C: {col} :: Invalid escape sequence :: {ch}")]
-    InvalidEscapeSequence { line: usize, col: usize, ch: char },
+//     #[error("L: {line} | C: {col} :: Invalid escape sequence :: {ch}")]
+//     InvalidEscapeSequence { line: usize, col: usize, ch: char },
 
-    #[error("L: {line} | C: {col} :: Unexpected EOF")]
-    UnexpectedEOF { line: usize, col: usize },
+//     #[error("L: {line} | C: {col} :: Unexpected EOF")]
+//     UnexpectedEOF { line: usize, col: usize },
 
-    #[error("L: {line} | C: {col} :: Unterminated string")]
-    UnterminatedString { line: usize, col: usize },
+//     #[error("L: {line} | C: {col} :: Unterminated string")]
+//     UnterminatedString { line: usize, col: usize },
 
-    #[error("L: {line} | C: {col} :: Unterminated insertion")]
-    UnterminatedInsertion { line: usize, col: usize },
+//     #[error("L: {line} | C: {col} :: Unterminated insertion")]
+//     UnterminatedInsertion { line: usize, col: usize },
 
-    #[error("L: {line} | C: {col} :: Empty insertion")]
-    EmptyInsertion { line: usize, col: usize },
+//     #[error("L: {line} | C: {col} :: Empty insertion")]
+//     EmptyInsertion { line: usize, col: usize },
 
-    #[error("L: {line} | C: {col} :: Expected {expected} :: {found}")]
-    Expected {
-        line: usize,
-        col: usize,
-        expected: String,
-        found: String,
-    },
+//     #[error("L: {line} | C: {col} :: Expected {expected} :: {found}")]
+//     Expected {
+//         line: usize,
+//         col: usize,
+//         expected: String,
+//         found: String,
+//     },
 
-    #[error("EOF")]
-    EOF,
+//     #[error("EOF")]
+//     EOF,
 
-    #[error("Not an initializer")]
-    NotInit,
-}
+//     #[error("Not an initializer")]
+//     NotInit,
+// }
 
 #[derive(Debug, thiserror::Error, PartialEq, Clone)]
 pub enum ParseError {
@@ -94,7 +100,7 @@ pub enum ParseError {
     NoTopLevelExpressionsAllowed,
 
     #[error(transparent)]
-    LexError(#[from] LexError),
+    LexError(#[from] LxErr),
 
     #[error("Unimplemented")]
     Unimplemented,
@@ -133,26 +139,28 @@ pub enum SemanticError {
     ParseError(#[from] ParseError),
 }
 
-pub struct Trace<E>
+pub struct Trace<'a, E>
 where
     E: Error + 'static,
 {
-    pub cx: SourceCx,
+    pub src: Source<'a>,
     pub err: E,
 }
 
-pub struct SourceCx {
-    pub src: String,
-    pub file: String,
-    pub line: usize,
-    pub col: usize,
-}
-
-impl<E> Trace<E>
+impl<'a, E> Trace<'a, E>
 where
     E: Error + 'static,
 {
-    pub fn new(cx: SourceCx, err: E) -> Self {
-        Self { cx, err }
+    pub fn new(src: Source, err: E) -> Self {
+        Self { src, err }
+    }
+}
+
+impl<'a> From<Trace<'a, LxErr>> for Trace<'a, ParseError> {
+    fn from(trc: Trace<LxErr>) -> Self {
+        Trace {
+            src: trc.src,
+            err: ParseError::from(trc.err),
+        }
     }
 }

@@ -1,4 +1,11 @@
-use crate::{decl::Decl, expr::Expr};
+use crate::{
+    decl::{Decl, Requirement},
+    expr::Expr,
+};
+
+pub struct Prog {
+    pub requirements: Vec<Requirement>,
+}
 
 #[derive(Debug, PartialEq)]
 pub enum Stmt {

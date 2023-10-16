@@ -4,14 +4,14 @@ pub mod ast;
 pub mod decl;
 pub mod err;
 pub mod expr;
-pub mod lex;
 pub mod parse;
+pub mod parser;
 pub mod sem;
 pub mod sym;
+pub mod syntax;
 pub mod token;
 #[macro_use]
 pub mod log;
-pub mod tok;
 pub mod charset;
 pub mod lexer;
 
@@ -32,7 +32,7 @@ pub fn repl() {
         print!(">>\t| ");
         std::io::stdout().flush().unwrap();
         std::io::stdin().read_line(&mut inp).unwrap();
-        let lex = lex::Lexer::new(&inp);
+        let lex = lexer::Lexer::new(&inp.as_bytes());
         let mut parser = parse::Parser::new(lex);
         let decl = parser.parse_decl();
         match decl {

@@ -59,7 +59,7 @@ fn main() -> std::io::Result<()> {
 
             let tp = std::fs::read_to_string(p)?;
 
-            let lx = tipis::lex::Lexer::new(&tp);
+            let lx = tipis::lexer::Lexer::new(&tp);
             let mut par = tipis::parse::Parser::new(lx);
             let decls = match par.parse() {
                 Ok(decls) => decls,

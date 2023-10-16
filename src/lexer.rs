@@ -1,89 +1,91 @@
 use crate::charset::{is_vert_ws, is_ws};
-use crate::err::{LxErrKind, LxError};
-use crate::tok::{Literal, Source, StringTy, Symbol, TokKind, Token};
+use crate::err::{LxErr, LxErrKind, Trace};
+use crate::token::{Literal, Source, StringTy, TokKind, Token};
 
 #[cfg_attr(test, derive(PartialEq))]
 #[derive(Debug, Clone)]
-pub struct Cx {
+pub struct Pos {
     pub ix: usize,
     pub line: usize,
     pub col: usize,
     pub ch: char,
 }
 
-impl std::fmt::Display for Cx {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!(
-            "Cx {{ ix: {}, line: {}, col: {}, ch: {} }}",
-            self.ix, self.line, self.col, self.ch,
-        ))
-    }
+pub struct Lexer<'a> {
+    pub src: &'a [u8],
+    pub pos: Pos,
+    pub tmppos: Option<Pos>,
 }
 
-pub struct Lexer {
-    pub src: String,
-    pub chars: Vec<char>,
-    pub cx: Cx,
-    pub tmpcx: Option<Cx>,
-}
-
-impl Lexer {
-    pub fn new(inp: String) -> Lexer {
-        let chars = inp.chars().collect();
+impl<'a> Lexer<'a> {
+    pub fn new(src: &'a [u8]) -> Lexer<'a> {
         Lexer {
-            src: inp,
-            chars,
-            cx: Cx {
+            src,
+            pos: Pos {
                 ix: 0,
                 line: 0,
                 col: 0,
                 ch: '\0',
             },
-            tmpcx: None,
+            tmppos: None,
         }
     }
 
-    pub fn look_ahead(&mut self) -> Result<Token, LxError> {
-        if let None = self.tmpcx {
-            self.tmpcx = Some(self.cx.to_owned());
+    pub fn lex(&mut self) -> Result<Vec<Token<'a>>, Trace<LxErr>> {
+        let mut toks = Vec::new();
+        while let Some(tok) = self.next_token().ok() {
+            toks.push(tok);
+        }
+        Ok(toks)
+    }
+
+    pub fn look_ahead(&mut self) -> Result<Token, Trace<LxErr>> {
+        if let None = self.tmppos {
+            self.tmppos = Some(self.pos.to_owned());
         }
         let tok = self.lx_tok()?;
         Ok(tok)
     }
 
-    pub fn next_token(&mut self) -> Result<Token, LxError> {
-        if let Some(cx) = self.tmpcx.take() {
-            self.cx = cx;
+    pub fn next_token(&mut self) -> Result<Token, Trace<LxErr>> {
+        if let Some(cx) = self.tmppos.take() {
+            self.pos = cx;
         }
         let tok = self.lx_tok()?;
         Ok(tok)
     }
 
-    fn lx_tok(&mut self) -> Result<Token, LxError> {
+    fn lx_tok(&mut self) -> Result<Token, Trace<LxErr>> {
         self.skip_ws();
         let ch = self.peek_or(LxErrKind::UnexpectedEOF)?;
         Ok(match ch {
-            'a'..='z' | 'A'..='Z' | '_' => self.lx_ident()?,
-            '0'..='9' => self.lx_num()?,
-            '"' => self.lx_str(false)?,
-            '$' => match self.peek_n(1) {
-                Some('}') => self.lx_str(true)?,
-                _ => Token {
-                    src: self.src(&self.src[self.cx.ix..self.cx.ix + 1]),
+            b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.lx_ident()?,
+            b'0'..=b'9' => self.lx_num()?,
+            b'"' => self.lx_str(false)?,
+            b'$' => match self.peek_n(1) {
+                Some(b'}') => self.lx_str(true)?,
+                _ => {
+                    self.take();
+                    Token {
+                        src: self.src(&self.src[self.pos.ix..self.pos.ix + 1]),
+                        val: None,
+                        kind: TokKind::from(ch),
+                    }
+                }
+            },
+            _ => {
+                self.take();
+                Token {
+                    src: self.src(&self.src[self.pos.ix..self.pos.ix + 1]),
                     val: None,
-                    kind: TokKind::from(self.take_or(LxErrKind::UnexpectedEOF)?),
-                },
-            },
-            _ => Token {
-                src: self.src(&self.src[self.cx.ix..self.cx.ix + 1]),
-                val: None,
-                kind: TokKind::from(self.take_or(LxErrKind::UnexpectedEOF)?),
-            },
+                    kind: TokKind::from(ch),
+                }
+            }
         })
     }
 
-    fn lx_str<'a>(&'a mut self, insert_started: bool) -> Result<Token<'a>, LxError> {
-        let six = self.cx.ix;
+    fn lx_str(&mut self, insert_started: bool) -> Result<Token<'a>, Trace<LxErr>> {
+        let six = self.pos.ix;
         self.take();
         if insert_started {
             self.take();
@@ -91,12 +93,12 @@ impl Lexer {
 
         while let Some(ch) = self.peek() {
             let token_kind = match ch {
-                '"' => Some(TokKind::Literal(Literal::String(match insert_started {
+                b'"' => Some(TokKind::Literal(Literal::String(match insert_started {
                     true => StringTy::InsertStarted,
                     false => StringTy::Literal,
                 }))),
-                '{' => match self.peek_n(1) {
-                    Some('$') => Some(TokKind::Literal(Literal::String(match insert_started {
+                b'{' => match self.peek_n(1) {
+                    Some(b'$') => Some(TokKind::Literal(Literal::String(match insert_started {
                         true => StringTy::InBetween,
                         false => StringTy::InsertEnded,
                     }))),
@@ -106,106 +108,126 @@ impl Lexer {
             };
             self.take();
             if let Some(kind) = token_kind {
-                let buf = &self.src[six..self.cx.ix];
+                let buf = &self.src[six..self.pos.ix];
                 return Ok(Token {
                     src: self.src(&buf),
-                    val: Some(buf.as_ref()),
+                    val: Some(self.to_str_or(buf)?),
                     kind,
                 });
             }
         }
 
-        Err(self.err(LxErrKind::UnterminatedString))
+        Err(self.err(LxErrKind::UnterminatedString, six))
     }
 
-    fn lx_ident(&mut self) -> Result<Token, LxError> {
-        let six = self.cx.ix;
+    fn lx_ident(&mut self) -> Result<Token, Trace<LxErr>> {
+        let six = self.pos.ix;
         while let Some(ch) = self.peek() {
-            if !ch.is_alphanumeric() && ch != '_' {
+            if !(b'a' <= ch && ch <= b'z' || b'A' <= ch && ch <= b'Z' || ch == b'_') {
                 break;
             }
             self.take();
         }
 
-        let buf = &self.src[six..self.cx.ix];
+        let buf = &self.src[six..self.pos.ix];
         Ok(Token {
             src: self.src(&buf),
-            val: Some(&buf),
+            val: Some(self.to_str_or(buf)?),
             kind: TokKind::Ident,
         })
     }
 
-    fn lx_num(&mut self) -> Result<Token, LxError> {
-        let six = self.cx.ix;
+    fn lx_num(&mut self) -> Result<Token, Trace<LxErr>> {
+        let six = self.pos.ix;
         while let Some(ch) = self.peek() {
-            if !ch.is_digit(10) {
+            if !(b'0' <= ch && ch <= b'9') {
                 break;
             }
             self.take();
         }
 
-        let buf = &self.src[six..self.cx.ix];
+        let buf = &self.src[six..self.pos.ix];
         Ok(Token {
             src: self.src(&buf),
-            val: Some(&buf),
+            val: Some(std::str::from_utf8(buf).unwrap()),
             kind: TokKind::Literal(Literal::Int),
         })
     }
 
-    fn take(&mut self) -> Option<char> {
+    fn take(&mut self) -> Option<u8> {
         let ch = self.peek()?;
         if is_vert_ws(ch) {
-            self.cx.line += 1;
-            self.cx.col = 0;
-        } else {
-            self.cx.col += 1;
+            self.pos.line += 1;
+            self.pos.col = 0;
         }
-        lex!(
-            "[take] {} :: [line] {} :: [col] {} ",
-            ch,
-            self.cx.line,
-            self.cx.col
-        );
-
+        self.pos.col += 1;
+        self.pos.ix += 1;
         Some(ch)
     }
 
-    fn take_or(&mut self, kind: LxErrKind) -> Result<char, LxError> {
-        self.take().ok_or(self.err(kind))
+    fn take_or(&mut self, kind: LxErrKind) -> Result<u8, Trace<LxErr>> {
+        self.take().ok_or(self.err(kind, self.pos.ix))
     }
 
-    fn peek(&mut self) -> Option<char> {
-        if self.cx.ix >= self.chars.len() {
+    fn take_char(&mut self) -> Option<char> {
+        let ch = self.peek_char()?;
+        let len = ch.len_utf8();
+        self.pos.ix += len;
+        Some(ch)
+    }
+
+    fn peek(&mut self) -> Option<u8> {
+        if self.pos.ix >= self.src.len() {
             return None;
         }
-        Some(self.chars[self.cx.ix])
+        Some(self.src[self.pos.ix])
     }
 
-    fn peek_n(&mut self, n: usize) -> Option<char> {
-        if self.cx.ix + n >= self.chars.len() {
+    fn peek_char(&self) -> Option<char> {
+        let rem = &self.src[self.pos.ix..];
+        match std::str::from_utf8(&rem[..std::cmp::min(4, rem.len())]) {
+            Ok(s) => s.chars().next(),
+            Err(_) => None,
+        }
+    }
+
+    fn peek_n(&mut self, n: usize) -> Option<u8> {
+        if self.pos.ix + n >= self.src.len() {
             return None;
         }
-        Some(self.chars[self.cx.ix])
+        Some(self.src[self.pos.ix])
     }
 
-    fn peek_or(&mut self, kind: LxErrKind) -> Result<char, LxError> {
-        self.peek().ok_or(self.err(kind))
+    fn peek_or(&mut self, kind: LxErrKind) -> Result<u8, Trace<LxErr>> {
+        self.peek().ok_or(self.err(kind, self.pos.ix))
     }
 
-    fn err(&self, kind: LxErrKind) -> LxError {
-        match kind {
-            LxErrKind::InvalidToken => LxError::InvalidToken(self.cx.clone()),
-            LxErrKind::InvalidCharacter => LxError::InvalidCharacter(self.cx.clone()),
-            LxErrKind::UnexpectedEOF => LxError::UnexpectedEOF(self.cx.clone()),
-            LxErrKind::UnterminatedString => LxError::Unterminated(self.cx.clone()),
+    fn err(&self, kind: LxErrKind, six: usize) -> Trace<LxErr> {
+        let src = self.src(&self.src[six..self.pos.ix]);
+        let src_str = src.to_string();
+        Trace {
+            src,
+            err: match kind {
+                LxErrKind::InvalidToken => LxErr::InvalidToken(src_str),
+                LxErrKind::InvalidCharacter => LxErr::InvalidCharacter(src_str),
+                LxErrKind::InvalidUtf8 => LxErr::InvalidUtf8(src_str),
+                LxErrKind::UnexpectedEOF => LxErr::UnexpectedEOF(src_str),
+                LxErrKind::UnterminatedString => LxErr::Unterminated(src_str),
+            },
         }
     }
 
-    fn src(&self, buf: &str) -> Source {
+    fn src(&self, buf: &'a [u8]) -> Source<'a> {
         Source {
-            bix: self.cx.ix - buf.len(),
-            eix: self.cx.ix,
+            bix: self.pos.ix - buf.len(),
+            col: self.pos.col,
+            line: self.pos.line,
+            src: &buf,
         }
+    }
+
+    fn to_str_or(&self, buf: &'a [u8]) -> Result<&'a str, Trace<LxErr>> {
+        std::str::from_utf8(buf).map_err(|_| self.err(LxErrKind::InvalidUtf8, self.pos.ix))
     }
 
     fn skip_ws(&mut self) {
