@@ -1,19 +1,19 @@
 use std::error::Error;
 
-use crate::{decl::Decl, err::Trace, lexer::Lexer};
+use crate::{
+    decl::Decl,
+    err::{SynErr, Trace},
+    lexer::Lexer,
+    sym::Key,
+    token::TokKind,
+};
 
-pub struct Syntax<'a, E>
-where
-    E: Error + 'static,
-{
+pub struct Syntax<'a> {
     lx: Lexer<'a>,
-    errs: Vec<Trace<'a, E>>,
+    errs: Vec<Trace<'a, SynErr>>,
 }
 
-impl<'a, E> Syntax<'a, E>
-where
-    E: Error + 'static,
-{
+impl<'a> Syntax<'a> {
     pub fn new(src: &'a [u8]) -> Self {
         Self {
             lx: Lexer::new(src),
@@ -21,7 +21,22 @@ where
         }
     }
 
-    pub fn parse(&mut self) -> Result<Vec<Decl>, Trace<'a, E>> {
-        Ok(vec![])
+    pub fn take(&mut self) -> Result<TokKind, Trace<'a, SynErr>> {
+        let tok = self.lx.next_token()?;
+        Ok(tok.kind)
+    }
+
+    pub fn parse(&mut self) -> Result<Vec<Decl>, Trace<'a, SynErr>> {
+        let mut decls = Vec::new();
+
+        use TokKind::*;
+        loop {
+            let tok = self.lx.look_ahead()?;
+            if let EOF = tok.kind {
+                break;
+            }
+        }
+
+        Ok(decls)
     }
 }

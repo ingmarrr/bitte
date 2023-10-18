@@ -26,7 +26,10 @@ pub enum LxErr {
 
 #[cfg_attr(test, derive(PartialEq))]
 #[derive(Debug, thiserror::Error)]
-pub enum SynErr {}
+pub enum SynErr {
+    #[error(transparent)]
+    LxErr(#[from] LxErr),
+}
 
 // #[derive(Debug, thiserror::Error, PartialEq, Clone)]
 // pub enum LexError {
@@ -139,6 +142,7 @@ pub enum SemanticError {
     ParseError(#[from] ParseError),
 }
 
+#[derive(Debug)]
 pub struct Trace<'a, E>
 where
     E: Error + 'static,
@@ -151,16 +155,25 @@ impl<'a, E> Trace<'a, E>
 where
     E: Error + 'static,
 {
-    pub fn new(src: Source, err: E) -> Self {
+    pub fn new(src: Source<'a>, err: E) -> Self {
         Self { src, err }
     }
 }
 
 impl<'a> From<Trace<'a, LxErr>> for Trace<'a, ParseError> {
-    fn from(trc: Trace<LxErr>) -> Self {
+    fn from(trc: Trace<'a, LxErr>) -> Self {
         Trace {
             src: trc.src,
             err: ParseError::from(trc.err),
+        }
+    }
+}
+
+impl<'a> From<Trace<'a, LxErr>> for Trace<'a, SynErr> {
+    fn from(trc: Trace<'a, LxErr>) -> Self {
+        Trace {
+            src: trc.src,
+            err: SynErr::from(trc.err),
         }
     }
 }

@@ -100,7 +100,7 @@ impl Analyzer {
     }
 
     fn analyze_let(&mut self, let_decl: Let) -> Result<(), SemanticError> {
-        self.analyze_expr(let_decl.expr, let_decl.ty, Scope::Global)?;
+        self.analyze_expr(let_decl.expr.clone(), let_decl.ty, Scope::Global)?;
         self.lets.push(let_decl);
         Ok(())
     }

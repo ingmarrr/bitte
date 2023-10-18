@@ -4,12 +4,11 @@ pub mod ast;
 pub mod decl;
 pub mod err;
 pub mod expr;
-pub mod parse;
-pub mod parser;
 pub mod sem;
 pub mod sym;
 pub mod syntax;
 pub mod token;
+pub mod visitor;
 #[macro_use]
 pub mod log;
 pub mod charset;
@@ -25,23 +24,30 @@ lazy_static::lazy_static! {
 
 pub fn repl() {
     let mut inp = String::new();
-    println!("Tp Repl");
-    let mut analyzer = sem::Analyzer::new();
+    println!("Tipis Repl");
+    // let mut analyzer = sem::Analyzer::new();
 
     loop {
         print!(">>\t| ");
         std::io::stdout().flush().unwrap();
         std::io::stdin().read_line(&mut inp).unwrap();
-        let lex = lexer::Lexer::new(&inp.as_bytes());
-        let mut parser = parse::Parser::new(lex);
-        let decl = parser.parse_decl();
-        match decl {
-            Ok(decl) => {
-                let _ = analyzer.analyze(decl);
-                println!("{:#?}", analyzer);
+        let mut lex = lexer::Lexer::new(&inp.as_bytes());
+        let mut syn = syntax::Syntax::new(&inp.as_bytes());
+        let res = syn.take();
+        match res {
+            Ok(tok) => {
+                println!("{:#?}", tok);
             }
-            Err(e) => println!("{:#?}", e),
+            Err(err) => println!("{:#?}", err),
         }
+        // let decl = parser.parse_decl();
+        // match decl {
+        //     Ok(decl) => {
+        //         let _ = analyzer.analyze(decl);
+        //         println!("{:#?}", analyzer);
+        //     }
+        //     Err(e) => println!("{:#?}", e),
+        // }
         inp.clear();
     }
 }

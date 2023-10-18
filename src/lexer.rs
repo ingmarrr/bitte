@@ -31,13 +31,13 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn lex(&mut self) -> Result<Vec<Token<'a>>, Trace<LxErr>> {
-        let mut toks = Vec::new();
-        while let Some(tok) = self.next_token().ok() {
-            toks.push(tok);
-        }
-        Ok(toks)
-    }
+    // pub fn lex(&mut self) -> Result<Vec<Token<'a>>, Trace<'a, LxErr>> {
+    //     let mut toks = Vec::new();
+    //     while let Ok(tok) = self.next_token() {
+    //         toks.push(tok);
+    //     }
+    //     Ok(toks)
+    // }
 
     pub fn look_ahead(&mut self) -> Result<Token, Trace<LxErr>> {
         if let None = self.tmppos {
@@ -47,7 +47,7 @@ impl<'a> Lexer<'a> {
         Ok(tok)
     }
 
-    pub fn next_token(&mut self) -> Result<Token, Trace<LxErr>> {
+    pub fn next_token(&mut self) -> Result<Token, Trace<'a, LxErr>> {
         if let Some(cx) = self.tmppos.take() {
             self.pos = cx;
         }
@@ -55,16 +55,15 @@ impl<'a> Lexer<'a> {
         Ok(tok)
     }
 
-    fn lx_tok(&mut self) -> Result<Token, Trace<LxErr>> {
+    fn lx_tok(&mut self) -> Result<Token, Trace<'a, LxErr>> {
         self.skip_ws();
-        let ch = self.peek_or(LxErrKind::UnexpectedEOF)?;
-        Ok(match ch {
+        Ok(match self.peek_or(LxErrKind::UnexpectedEOF)? {
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.lx_ident()?,
             b'0'..=b'9' => self.lx_num()?,
             b'"' => self.lx_str(false)?,
             b'$' => match self.peek_n(1) {
                 Some(b'}') => self.lx_str(true)?,
-                _ => {
+                Some(ch) => {
                     self.take();
                     Token {
                         src: self.src(&self.src[self.pos.ix..self.pos.ix + 1]),
@@ -72,8 +71,9 @@ impl<'a> Lexer<'a> {
                         kind: TokKind::from(ch),
                     }
                 }
+                None => return Err(self.err(LxErrKind::UnexpectedEOF, self.pos.ix)),
             },
-            _ => {
+            ch => {
                 self.take();
                 Token {
                     src: self.src(&self.src[self.pos.ix..self.pos.ix + 1]),
@@ -84,7 +84,7 @@ impl<'a> Lexer<'a> {
         })
     }
 
-    fn lx_str(&mut self, insert_started: bool) -> Result<Token<'a>, Trace<LxErr>> {
+    fn lx_str(&mut self, insert_started: bool) -> Result<Token<'a>, Trace<'a, LxErr>> {
         let six = self.pos.ix;
         self.take();
         if insert_started {
@@ -120,7 +120,7 @@ impl<'a> Lexer<'a> {
         Err(self.err(LxErrKind::UnterminatedString, six))
     }
 
-    fn lx_ident(&mut self) -> Result<Token, Trace<LxErr>> {
+    fn lx_ident(&mut self) -> Result<Token, Trace<'a, LxErr>> {
         let six = self.pos.ix;
         while let Some(ch) = self.peek() {
             if !(b'a' <= ch && ch <= b'z' || b'A' <= ch && ch <= b'Z' || ch == b'_') {
@@ -137,7 +137,7 @@ impl<'a> Lexer<'a> {
         })
     }
 
-    fn lx_num(&mut self) -> Result<Token, Trace<LxErr>> {
+    fn lx_num(&mut self) -> Result<Token, Trace<'a, LxErr>> {
         let six = self.pos.ix;
         while let Some(ch) = self.peek() {
             if !(b'0' <= ch && ch <= b'9') {
@@ -165,7 +165,7 @@ impl<'a> Lexer<'a> {
         Some(ch)
     }
 
-    fn take_or(&mut self, kind: LxErrKind) -> Result<u8, Trace<LxErr>> {
+    fn take_or(&mut self, kind: LxErrKind) -> Result<u8, Trace<'a, LxErr>> {
         self.take().ok_or(self.err(kind, self.pos.ix))
     }
 
@@ -176,7 +176,7 @@ impl<'a> Lexer<'a> {
         Some(ch)
     }
 
-    fn peek(&mut self) -> Option<u8> {
+    fn peek(&self) -> Option<u8> {
         if self.pos.ix >= self.src.len() {
             return None;
         }
@@ -191,18 +191,18 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn peek_n(&mut self, n: usize) -> Option<u8> {
+    fn peek_n(&self, n: usize) -> Option<u8> {
         if self.pos.ix + n >= self.src.len() {
             return None;
         }
         Some(self.src[self.pos.ix])
     }
 
-    fn peek_or(&mut self, kind: LxErrKind) -> Result<u8, Trace<LxErr>> {
+    fn peek_or(&self, kind: LxErrKind) -> Result<u8, Trace<'a, LxErr>> {
         self.peek().ok_or(self.err(kind, self.pos.ix))
     }
 
-    fn err(&self, kind: LxErrKind, six: usize) -> Trace<LxErr> {
+    fn err(&self, kind: LxErrKind, six: usize) -> Trace<'a, LxErr> {
         let src = self.src(&self.src[six..self.pos.ix]);
         let src_str = src.to_string();
         Trace {
@@ -226,7 +226,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn to_str_or(&self, buf: &'a [u8]) -> Result<&'a str, Trace<LxErr>> {
+    fn to_str_or(&self, buf: &'a [u8]) -> Result<&'a str, Trace<'a, LxErr>> {
         std::str::from_utf8(buf).map_err(|_| self.err(LxErrKind::InvalidUtf8, self.pos.ix))
     }
 

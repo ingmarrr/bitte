@@ -1,7 +1,7 @@
 use crate::charset::{is_all_num, is_ident};
 
 #[cfg_attr(test, derive(PartialEq))]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Source<'a> {
     /// Beginning offset of any token
     pub bix: usize,
@@ -27,12 +27,14 @@ impl<'a> Source<'a> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct Token<'a> {
     pub src: Source<'a>,
     pub val: Option<&'a str>,
     pub kind: TokKind,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum TokKind {
     Keyword(Keyword),
     Symbol(Symbol),
@@ -100,6 +102,7 @@ impl From<&str> for TokKind {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum Keyword {
     Let,
     Struct,
@@ -127,6 +130,7 @@ impl TryFrom<&str> for Keyword {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum Symbol {
     At,
     Backslash,
@@ -138,6 +142,7 @@ pub enum Symbol {
     Dollar,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum Opener {
     DQuote,
     DoubleLCurly,
@@ -161,6 +166,7 @@ impl TryFrom<&str> for Opener {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum Closer {
     DQuote,
     DoubleRCurly,
@@ -184,6 +190,7 @@ impl TryFrom<&str> for Closer {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum Literal {
     String(StringTy),
     List,
@@ -191,6 +198,7 @@ pub enum Literal {
     Tuple,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum StringTy {
     InsertEnded,
     InBetween,
