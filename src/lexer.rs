@@ -31,33 +31,37 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    // pub fn lex(&mut self) -> Result<Vec<Token<'a>>, Trace<'a, LxErr>> {
-    //     let mut toks = Vec::new();
-    //     while let Ok(tok) = self.next_token() {
-    //         toks.push(tok);
-    //     }
-    //     Ok(toks)
-    // }
+    pub fn lex(&mut self) -> Result<Vec<Token<'a>>, Trace<'a, LxErr>> {
+        let mut toks = Vec::new();
 
-    pub fn look_ahead(&mut self) -> Result<Token, Trace<LxErr>> {
+        while let Ok(tok) = self.next_token() {
+            toks.push(tok);
+        }
+
+        Ok(toks)
+    }
+
+    pub fn look_ahead(&mut self) -> Result<Token<'a>, Trace<'a, LxErr>> {
         if let None = self.tmppos {
             self.tmppos = Some(self.pos.to_owned());
         }
         let tok = self.lx_tok()?;
+        println!("Lookahead: {:#?}", tok);
         Ok(tok)
     }
 
-    pub fn next_token(&mut self) -> Result<Token, Trace<'a, LxErr>> {
+    pub fn next_token(&mut self) -> Result<Token<'a>, Trace<'a, LxErr>> {
         if let Some(cx) = self.tmppos.take() {
             self.pos = cx;
         }
-        let tok = self.lx_tok()?;
+        let tok: Token<'a> = self.lx_tok()?;
+        println!("Nexttoken: {:#?}", tok);
         Ok(tok)
     }
 
-    fn lx_tok(&mut self) -> Result<Token, Trace<'a, LxErr>> {
+    fn lx_tok(&mut self) -> Result<Token<'a>, Trace<'a, LxErr>> {
         self.skip_ws();
-        Ok(match self.peek_or(LxErrKind::UnexpectedEOF)? {
+        Ok(match self.peek().or(Some(b'\0')).unwrap() {
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.lx_ident()?,
             b'0'..=b'9' => self.lx_num()?,
             b'"' => self.lx_str(false)?,
@@ -75,8 +79,13 @@ impl<'a> Lexer<'a> {
             },
             ch => {
                 self.take();
+                let src = if ch == b'\0' {
+                    self.src(&self.src[self.pos.ix..])
+                } else {
+                    self.src(&self.src[self.pos.ix..self.pos.ix + 1])
+                };
                 Token {
-                    src: self.src(&self.src[self.pos.ix..self.pos.ix + 1]),
+                    src,
                     val: None,
                     kind: TokKind::from(ch),
                 }
@@ -85,11 +94,11 @@ impl<'a> Lexer<'a> {
     }
 
     fn lx_str(&mut self, insert_started: bool) -> Result<Token<'a>, Trace<'a, LxErr>> {
-        let six = self.pos.ix;
         self.take();
         if insert_started {
             self.take();
         }
+        let six = self.pos.ix;
 
         while let Some(ch) = self.peek() {
             let token_kind = match ch {
@@ -106,9 +115,9 @@ impl<'a> Lexer<'a> {
                 },
                 _ => None,
             };
+            let buf = &self.src[six..self.pos.ix];
             self.take();
             if let Some(kind) = token_kind {
-                let buf = &self.src[six..self.pos.ix];
                 return Ok(Token {
                     src: self.src(&buf),
                     val: Some(self.to_str_or(buf)?),
@@ -120,7 +129,7 @@ impl<'a> Lexer<'a> {
         Err(self.err(LxErrKind::UnterminatedString, six))
     }
 
-    fn lx_ident(&mut self) -> Result<Token, Trace<'a, LxErr>> {
+    fn lx_ident(&mut self) -> Result<Token<'a>, Trace<'a, LxErr>> {
         let six = self.pos.ix;
         while let Some(ch) = self.peek() {
             if !(b'a' <= ch && ch <= b'z' || b'A' <= ch && ch <= b'Z' || ch == b'_') {
@@ -130,14 +139,16 @@ impl<'a> Lexer<'a> {
         }
 
         let buf = &self.src[six..self.pos.ix];
-        Ok(Token {
+        let val = self.to_str_or(buf)?;
+
+        Ok(Token::<'a> {
             src: self.src(&buf),
-            val: Some(self.to_str_or(buf)?),
-            kind: TokKind::Ident,
+            val: Some(val),
+            kind: TokKind::from(val),
         })
     }
 
-    fn lx_num(&mut self) -> Result<Token, Trace<'a, LxErr>> {
+    fn lx_num(&mut self) -> Result<Token<'a>, Trace<'a, LxErr>> {
         let six = self.pos.ix;
         while let Some(ch) = self.peek() {
             if !(b'0' <= ch && ch <= b'9') {
@@ -199,7 +210,10 @@ impl<'a> Lexer<'a> {
     }
 
     fn peek_or(&self, kind: LxErrKind) -> Result<u8, Trace<'a, LxErr>> {
-        self.peek().ok_or(self.err(kind, self.pos.ix))
+        let res = self.peek();
+        println!("{:#?}", res.unwrap_or(b'?') as char);
+        res.ok_or(self.err(kind, self.pos.ix))
+        // self.peek().ok_or(self.err(kind, self.pos.ix))
     }
 
     fn err(&self, kind: LxErrKind, six: usize) -> Trace<'a, LxErr> {

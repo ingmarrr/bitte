@@ -12,21 +12,24 @@ pub enum LxErrKind {
 
 #[derive(Debug, thiserror::Error, PartialEq, Clone)]
 pub enum LxErr {
-    #[error("Invalid token :: {0}")]
+    #[error("Lex: Invalid token :: {0}")]
     InvalidToken(String),
-    #[error("Invalid character :: {0}")]
+    #[error("Lex: Invalid character :: {0}")]
     InvalidCharacter(String),
-    #[error("Invalid Utf8 :: {0}")]
+    #[error("Lex: Invalid Utf8 :: {0}")]
     InvalidUtf8(String),
-    #[error("Unexpected EOF :: {0}")]
+    #[error("Lex: Unexpected EOF :: {0}")]
     UnexpectedEOF(String),
-    #[error("Unterminated String :: {0}")]
+    #[error("Lex: Unterminated String :: {0}")]
     Unterminated(String),
 }
 
 #[cfg_attr(test, derive(PartialEq))]
 #[derive(Debug, thiserror::Error)]
 pub enum SynErr {
+    #[error("Syn: Expected [{0}], found [{1}] :: {2}")]
+    Expected(String, String, String),
+
     #[error(transparent)]
     LxErr(#[from] LxErr),
 }
@@ -157,6 +160,12 @@ where
 {
     pub fn new(src: Source<'a>, err: E) -> Self {
         Self { src, err }
+    }
+}
+
+impl<'a, E: Error + 'static> std::fmt::Display for Trace<'a, E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.err.to_string())
     }
 }
 

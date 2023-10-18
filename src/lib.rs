@@ -3,6 +3,7 @@ extern crate core;
 pub mod ast;
 pub mod decl;
 pub mod err;
+pub mod exec;
 pub mod expr;
 pub mod sem;
 pub mod sym;
@@ -18,6 +19,8 @@ use std::io::Write;
 
 use log::{Level, Logger};
 
+use crate::{ast::Dir, exec::Excecuter};
+
 lazy_static::lazy_static! {
     pub static ref LOGGER: Logger = Logger { level: Level::None };
 }
@@ -31,14 +34,24 @@ pub fn repl() {
         print!(">>\t| ");
         std::io::stdout().flush().unwrap();
         std::io::stdin().read_line(&mut inp).unwrap();
-        let mut lex = lexer::Lexer::new(&inp.as_bytes());
+
+        if inp == "quit\n" || inp == "q\n" {
+            std::process::exit(0);
+        }
+
         let mut syn = syntax::Syntax::new(&inp.as_bytes());
-        let res = syn.take();
+        let res = syn.parse();
         match res {
             Ok(tok) => {
                 println!("{:#?}", tok);
+                let res = Excecuter::dir(Dir {
+                    name: "examples".into(),
+                    children: vec![tok],
+                    files: vec![],
+                });
+                println!("{:#?}", res)
             }
-            Err(err) => println!("{:#?}", err),
+            Err(err) => println!("{:#?}", err.to_string()),
         }
         // let decl = parser.parse_decl();
         // match decl {

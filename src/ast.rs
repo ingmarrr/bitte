@@ -28,3 +28,22 @@ impl std::fmt::Display for Ty {
         }
     }
 }
+
+#[derive(Debug, PartialEq)]
+pub struct Dir {
+    pub name: std::path::PathBuf,
+    pub children: Vec<Dir>,
+    pub files: Vec<File>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct File {
+    pub name: String,
+    pub content: String,
+}
+
+impl File {
+    pub fn path(&self, parent: std::path::PathBuf) -> std::path::PathBuf {
+        parent.join(&self.name)
+    }
+}

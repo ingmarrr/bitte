@@ -59,19 +59,20 @@ fn main() -> std::io::Result<()> {
 
             let tp = std::fs::read_to_string(p)?;
 
-            let lx = tipis::lexer::Lexer::new(&tp);
-            let mut par = tipis::parse::Parser::new(lx);
-            let decls = match par.parse() {
-                Ok(decls) => decls,
-                Err(e) => {
-                    tipis::log!(tipis::log::Level::ERROR, "{}", e);
-                    return Ok(());
-                }
-            };
-            let mut analyzer = tipis::sem::Analyzer::new();
-            let _ = analyzer.analyze_all(decls);
-            let exec = tipis::exec::Exec::new(name, input, analyzer);
-            println!("{:#?}", exec.args);
+            // let lx = tipis::lexer::Lexer::new(&tp.as_bytes());
+            // let mut par = tipis::parsee::Parser::new(lx);
+            let mut syn = tipis::syntax::Syntax::new(&tp.as_bytes());
+            // let decls = match par.parse() {
+            //     Ok(decls) => decls,
+            //     Err(e) => {
+            //         tipis::log!(tipis::log::Level::ERROR, "{}", e);
+            //         return Ok(());
+            //     }
+            // };
+            // let mut analyzer = tipis::sem::Analyzer::new();
+            // let _ = analyzer.analyze_all(decls);
+            // let exec = tipis::exec::Exec::new(name, input, analyzer);
+            // println!("{:#?}", exec.args);
             // println!("{:#?}", analyzer);
         }
     };

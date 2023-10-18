@@ -17,7 +17,7 @@ impl<'a> std::fmt::Display for Source<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let src_str = std::str::from_utf8(self.src).map_err(|_| std::fmt::Error)?;
 
-        write!(f, "{}:{} - {}", self.line, self.col, src_str)
+        write!(f, "{}:{} - [{}]", self.line, self.col, src_str)
     }
 }
 
@@ -34,17 +34,36 @@ pub struct Token<'a> {
     pub kind: TokKind,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokKind {
     Keyword(Keyword),
     Symbol(Symbol),
-    Group(Opener, Closer),
+    Opener(Opener),
+    Closer(Closer),
     Literal(Literal),
     Ident,
     Error,
     SOF,
     EOF,
     Invalid,
+}
+
+impl std::fmt::Display for TokKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TokKind::Keyword(kw) => write!(f, "{}", kw),
+            TokKind::Symbol(sym) => write!(f, "{}", sym),
+            // TokKind::Group(op, cl) => write!(f, "{}{}", op, cl),
+            TokKind::Opener(op) => write!(f, "{}", op),
+            TokKind::Closer(cl) => write!(f, "{}", cl),
+            TokKind::Literal(lit) => write!(f, "{}", lit),
+            TokKind::Ident => write!(f, "Identifier"),
+            TokKind::Error => write!(f, "Error"),
+            TokKind::SOF => write!(f, "Start of File"),
+            TokKind::EOF => write!(f, "End of File"),
+            TokKind::Invalid => write!(f, "Invalid"),
+        }
+    }
 }
 
 impl From<u8> for TokKind {
@@ -59,11 +78,19 @@ impl From<u8> for TokKind {
             b',' => TokKind::Symbol(Symbol::Comma),
             b'$' => TokKind::Symbol(Symbol::Dollar),
 
-            b'"' => TokKind::Group(Opener::DQuote, Closer::DQuote),
-            b'{' | b'}' => TokKind::Group(Opener::LCurly, Closer::RCurly),
-            b'[' | b']' => TokKind::Group(Opener::LSquare, Closer::RSquare),
-            b'(' | b')' => TokKind::Group(Opener::LParen, Closer::RParen),
+            b'{' => TokKind::Opener(Opener::LCurly),
+            b'[' => TokKind::Opener(Opener::LSquare),
+            b'(' => TokKind::Opener(Opener::LParen),
 
+            b'}' => TokKind::Closer(Closer::RCurly),
+            b']' => TokKind::Closer(Closer::RSquare),
+            b')' => TokKind::Closer(Closer::RParen),
+
+            // b'"' => TokKind::Group(Opener::DQuote, Closer::DQuote),
+            // b'{' | b'}' => TokKind::Group(Opener::LCurly, Closer::RCurly),
+            // b'[' | b']' => TokKind::Group(Opener::LSquare, Closer::RSquare),
+            // b'(' | b')' => TokKind::Group(Opener::LParen, Closer::RParen),
+            b'\0' => TokKind::EOF,
             _ => TokKind::Invalid,
         }
     }
@@ -89,11 +116,18 @@ impl From<&str> for TokKind {
             "," => TokKind::Symbol(Symbol::Comma),
             "$" => TokKind::Symbol(Symbol::Dollar),
 
-            "\"" => TokKind::Group(Opener::DQuote, Closer::DQuote),
-            "{" | "}" => TokKind::Group(Opener::LCurly, Closer::RCurly),
-            "[" | "]" => TokKind::Group(Opener::LSquare, Closer::RSquare),
-            "(" | ")" => TokKind::Group(Opener::LParen, Closer::RParen),
+            "{" => TokKind::Opener(Opener::LCurly),
+            "[" => TokKind::Opener(Opener::LSquare),
+            "(" => TokKind::Opener(Opener::LParen),
 
+            "}" => TokKind::Closer(Closer::RCurly),
+            "]" => TokKind::Closer(Closer::RSquare),
+            ")" => TokKind::Closer(Closer::RParen),
+
+            // "\"" => TokKind::Group(Opener::DQuote, Closer::DQuote),
+            // "{" | "}" => TokKind::Group(Opener::LCurly, Closer::RCurly),
+            // "[" | "]" => TokKind::Group(Opener::LSquare, Closer::RSquare),
+            // "(" | ")" => TokKind::Group(Opener::LParen, Closer::RParen),
             st if is_ident(st) => TokKind::Ident,
             st if is_all_num(st) => TokKind::Literal(Literal::Int),
 
@@ -102,7 +136,7 @@ impl From<&str> for TokKind {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Keyword {
     Let,
     Struct,
@@ -111,6 +145,20 @@ pub enum Keyword {
     Opt,
     For,
     In,
+}
+
+impl std::fmt::Display for Keyword {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Keyword::Let => write!(f, "let"),
+            Keyword::Struct => write!(f, "struct"),
+            Keyword::Fmt => write!(f, "fmt"),
+            Keyword::Req => write!(f, "req"),
+            Keyword::Opt => write!(f, "opt"),
+            Keyword::For => write!(f, "for"),
+            Keyword::In => write!(f, "in"),
+        }
+    }
 }
 
 impl TryFrom<&str> for Keyword {
@@ -130,7 +178,7 @@ impl TryFrom<&str> for Keyword {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Symbol {
     At,
     Backslash,
@@ -142,13 +190,40 @@ pub enum Symbol {
     Dollar,
 }
 
-#[derive(Debug, Clone, Copy)]
+impl std::fmt::Display for Symbol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Symbol::At => write!(f, "@"),
+            Symbol::Backslash => write!(f, "\\"),
+            Symbol::Colon => write!(f, ":"),
+            Symbol::Semi => write!(f, ";"),
+            Symbol::Comma => write!(f, ","),
+            Symbol::Equal => write!(f, "="),
+            Symbol::Dot => write!(f, "."),
+            Symbol::Dollar => write!(f, "$"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Opener {
     DQuote,
     DoubleLCurly,
     LCurly,
     LSquare,
     LParen,
+}
+
+impl std::fmt::Display for Opener {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Opener::DQuote => write!(f, "\""),
+            Opener::DoubleLCurly => write!(f, "{{"),
+            Opener::LCurly => write!(f, "{{"),
+            Opener::LSquare => write!(f, "["),
+            Opener::LParen => write!(f, "("),
+        }
+    }
 }
 
 impl TryFrom<&str> for Opener {
@@ -166,13 +241,25 @@ impl TryFrom<&str> for Opener {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Closer {
     DQuote,
     DoubleRCurly,
     RCurly,
     RSquare,
     RParen,
+}
+
+impl std::fmt::Display for Closer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Closer::DQuote => write!(f, "\""),
+            Closer::DoubleRCurly => write!(f, "}}"),
+            Closer::RCurly => write!(f, "}}"),
+            Closer::RSquare => write!(f, "]"),
+            Closer::RParen => write!(f, ")"),
+        }
+    }
 }
 
 impl TryFrom<&str> for Closer {
@@ -190,7 +277,7 @@ impl TryFrom<&str> for Closer {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Literal {
     String(StringTy),
     List,
@@ -198,7 +285,21 @@ pub enum Literal {
     Tuple,
 }
 
-#[derive(Debug, Clone, Copy)]
+impl std::fmt::Display for Literal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Literal::String(StringTy::InsertEnded) => write!(f, "String Insert Ended"),
+            Literal::String(StringTy::InBetween) => write!(f, "String In Between"),
+            Literal::String(StringTy::InsertStarted) => write!(f, "String Insert Started"),
+            Literal::String(StringTy::Literal) => write!(f, "String Literal"),
+            Literal::List => write!(f, "List"),
+            Literal::Int => write!(f, "Int"),
+            Literal::Tuple => write!(f, "Tuple"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StringTy {
     InsertEnded,
     InBetween,
