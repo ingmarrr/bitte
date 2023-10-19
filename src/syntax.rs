@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Dir, File},
+    ast::{Ast, AstKind, Dir, File, Let, Ty},
     err::{SynErr, Trace},
     lexer::Lexer,
     token::{Closer, Keyword, Literal, Opener, StringTy, Symbol, TokKind, Token},
@@ -26,15 +26,12 @@ impl<'a> Syntax<'a> {
         Ok(self.lx.look_ahead()?)
     }
 
-    pub fn parse(&mut self) -> Result<Dir, Trace<'a, SynErr>> {
+    pub fn parse(&mut self) -> Result<Ast, Trace<'a, SynErr>> {
         let tok = self.take()?;
         match tok.kind {
-            TokKind::Keyword(Keyword::Struct) => self.parse_dir(),
-            TokKind::Keyword(Keyword::Let) => self.parse_file().map(|f| Dir {
-                name: ".".into(),
-                children: Vec::new(),
-                files: vec![f],
-            }),
+            TokKind::Keyword(Keyword::Dir) => Ok(Ast::Dir(self.parse_dir()?)),
+            TokKind::Keyword(Keyword::Let) => Ok(Ast::Let(self.parse_let()?)),
+            TokKind::Keyword(Keyword::File) => Ok(Ast::File(self.parse_file()?)),
             _ => Err(Trace::new(
                 self.lx.look_ahead()?.src,
                 SynErr::Expected(
@@ -79,44 +76,82 @@ impl<'a> Syntax<'a> {
         let mut files = Vec::new();
 
         loop {
-            let next = self.look_ahead()?;
+            let mut next = self.look_ahead()?;
 
-            if let TokKind::Closer(Closer::RCurly) = next.kind {
-                return Ok(Dir {
-                    name: std::path::PathBuf::from(name.val.unwrap()),
-                    children,
-                    files,
-                });
+            if let TokKind::Symbol(Symbol::At) = next.kind {
+                self.take()?;
+                let name = self.assert(TokKind::Ident)?;
+                let ext = match self.look_ahead()?.kind {
+                    TokKind::Symbol(Symbol::Dot) => {
+                        self.take()?;
+                        if let Ok(Token {
+                            kind: TokKind::Ident,
+                            ..
+                        }) = self.look_ahead()
+                        {
+                            let res = Some(self.take()?);
+                            next = self.look_ahead()?;
+                            res
+                        } else {
+                            None
+                        }
+                    }
+                    _ => {
+                        return Err(Trace::new(
+                            self.lx.look_ahead()?.src,
+                            SynErr::Expected(
+                                "`:`".into(),
+                                self.lx.look_ahead()?.kind.to_string(),
+                                self.lx.look_ahead()?.src.to_string(),
+                            ),
+                        ))
+                    }
+                };
+                let name = name.val.unwrap().to_owned()
+                    + &ext
+                        .map(|t| ".".to_owned() + t.val.unwrap())
+                        .unwrap_or("".to_owned());
+                files.push(Ast::Ref(AstKind::File, name))
             }
 
-            if next.kind != TokKind::Ident {
-                return Err(Trace::new(
-                    next.src,
-                    SynErr::Expected(
-                        "struct- or file name".into(),
-                        next.kind.to_string(),
-                        next.src.to_string(),
-                    ),
-                ));
+            match next.kind {
+                TokKind::Closer(Closer::RCurly) | TokKind::EOF => {
+                    return Ok(Dir {
+                        name: std::path::PathBuf::from(name.val.unwrap()),
+                        children,
+                        files,
+                    })
+                }
+                TokKind::Ident => {}
+                _ => {
+                    return Err(Trace::new(
+                        next.src,
+                        SynErr::Expected(
+                            "struct- or file name".into(),
+                            next.kind.to_string(),
+                            next.src.to_string(),
+                        ),
+                    ))
+                }
             }
 
             let closer = self.look_ahead()?;
             match closer.kind {
                 TokKind::Symbol(Symbol::Comma) => {
-                    children.push(Dir {
+                    children.push(Ast::Dir(Dir {
                         name: std::path::PathBuf::from(next.val.unwrap()),
                         children: Vec::new(),
                         files: Vec::new(),
-                    });
+                    }));
                     self.take()?;
                     self.take()?;
                 }
                 TokKind::Closer(Closer::RCurly) => {
-                    children.push(Dir {
+                    children.push(Ast::Dir(Dir {
                         name: std::path::PathBuf::from(next.val.unwrap()),
                         children: Vec::new(),
                         files: Vec::new(),
-                    });
+                    }));
                     self.take()?;
                     self.take()?;
                     // Important to return here, otherwise next iteration we might encounter a
@@ -128,10 +163,17 @@ impl<'a> Syntax<'a> {
                     });
                 }
                 TokKind::Opener(Opener::LCurly) => {
-                    children.push(self.parse_dir()?);
+                    children.push(Ast::Dir(self.parse_dir()?));
                 }
                 TokKind::Symbol(Symbol::Colon) | TokKind::Symbol(Symbol::Dot) => {
-                    files.push(self.parse_file()?)
+                    files.push(Ast::File(self.parse_file()?));
+                    if let Ok(Token {
+                        kind: TokKind::Symbol(Symbol::Comma),
+                        ..
+                    }) = self.look_ahead()
+                    {
+                        self.take()?;
+                    }
                 }
                 _ => {
                     return Err(Trace::new(
@@ -149,8 +191,19 @@ impl<'a> Syntax<'a> {
 
     pub fn parse_file(&mut self) -> Result<File, Trace<'a, SynErr>> {
         let name = self.assert(TokKind::Ident)?;
-        let ext = match self.take()?.kind {
-            TokKind::Symbol(Symbol::Dot) => Some(self.take()?),
+        let ext = match self.look_ahead()?.kind {
+            TokKind::Symbol(Symbol::Dot) => {
+                self.take()?;
+                if let Ok(Token {
+                    kind: TokKind::Ident,
+                    ..
+                }) = self.look_ahead()
+                {
+                    Some(self.take()?)
+                } else {
+                    None
+                }
+            }
             TokKind::Symbol(Symbol::Colon) => None,
             _ => {
                 return Err(Trace::new(
@@ -172,12 +225,32 @@ impl<'a> Syntax<'a> {
             .unwrap()
             .to_owned();
 
+        if let Ok(Token {
+            kind: TokKind::Symbol(Symbol::Semi),
+            ..
+        }) = self.look_ahead()
+        {
+            self.take()?;
+        }
+
         Ok(File {
             name: name.val.unwrap().to_owned()
                 + &ext
                     .map(|t| ".".to_owned() + t.val.unwrap())
                     .unwrap_or("".to_owned()),
             content,
+        })
+    }
+
+    pub fn parse_let(&mut self) -> Result<Let, Trace<'a, SynErr>> {
+        let name = self.assert(TokKind::Ident)?;
+        let _ = self.assert(TokKind::Symbol(Symbol::Equal))?;
+        let expr = self.assert(TokKind::Literal(Literal::String(StringTy::Literal)))?;
+
+        Ok(Let {
+            name: name.val.unwrap().to_owned(),
+            ty: Ty::Str,
+            expr: expr.val.unwrap().to_owned(),
         })
     }
 

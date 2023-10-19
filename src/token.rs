@@ -16,8 +16,11 @@ pub struct Source<'a> {
 impl<'a> std::fmt::Display for Source<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let src_str = std::str::from_utf8(self.src).map_err(|_| std::fmt::Error)?;
-
-        write!(f, "{}:{} - [{}]", self.line, self.col, src_str)
+        if src_str.len() <= 1 {
+            write!(f, "{}:{}", self.line, self.col)
+        } else {
+            write!(f, "{}:{} - [{}]", self.line, self.col, src_str)
+        }
     }
 }
 
@@ -32,6 +35,22 @@ pub struct Token<'a> {
     pub src: Source<'a>,
     pub val: Option<&'a str>,
     pub kind: TokKind,
+}
+
+impl std::fmt::Display for Token<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(val) = self.val {
+            return write!(
+                f,
+                "`{}` = `{}` :: [{}]",
+                self.kind,
+                val,
+                self.src.to_string()
+            );
+        }
+
+        write!(f, "`{}` :: [{}]", self.kind, self.src.to_string())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,7 +72,6 @@ impl std::fmt::Display for TokKind {
         match self {
             TokKind::Keyword(kw) => write!(f, "{}", kw),
             TokKind::Symbol(sym) => write!(f, "{}", sym),
-            // TokKind::Group(op, cl) => write!(f, "{}{}", op, cl),
             TokKind::Opener(op) => write!(f, "{}", op),
             TokKind::Closer(cl) => write!(f, "{}", cl),
             TokKind::Literal(lit) => write!(f, "{}", lit),
@@ -70,13 +88,13 @@ impl From<u8> for TokKind {
     fn from(value: u8) -> Self {
         match value {
             b'@' => TokKind::Symbol(Symbol::At),
+            b'$' => TokKind::Symbol(Symbol::Dollar),
             b'\\' => TokKind::Symbol(Symbol::Backslash),
             b':' => TokKind::Symbol(Symbol::Colon),
             b';' => TokKind::Symbol(Symbol::Semi),
             b'=' => TokKind::Symbol(Symbol::Equal),
             b'.' => TokKind::Symbol(Symbol::Dot),
             b',' => TokKind::Symbol(Symbol::Comma),
-            b'$' => TokKind::Symbol(Symbol::Dollar),
 
             b'{' => TokKind::Opener(Opener::LCurly),
             b'[' => TokKind::Opener(Opener::LSquare),
@@ -100,7 +118,8 @@ impl From<&str> for TokKind {
     fn from(kind: &str) -> TokKind {
         match kind {
             "let" => TokKind::Keyword(Keyword::Let),
-            "struct" => TokKind::Keyword(Keyword::Struct),
+            "dir" => TokKind::Keyword(Keyword::Dir),
+            "file" => TokKind::Keyword(Keyword::File),
             "fmt" => TokKind::Keyword(Keyword::Fmt),
             "req" => TokKind::Keyword(Keyword::Req),
             "opt" => TokKind::Keyword(Keyword::Opt),
@@ -139,24 +158,30 @@ impl From<&str> for TokKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Keyword {
     Let,
-    Struct,
+    Dir,
+    File,
     Fmt,
     Req,
     Opt,
     For,
     In,
+    String,
+    List,
 }
 
 impl std::fmt::Display for Keyword {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Keyword::Let => write!(f, "let"),
-            Keyword::Struct => write!(f, "struct"),
-            Keyword::Fmt => write!(f, "fmt"),
-            Keyword::Req => write!(f, "req"),
-            Keyword::Opt => write!(f, "opt"),
-            Keyword::For => write!(f, "for"),
-            Keyword::In => write!(f, "in"),
+            Keyword::Let => write!(f, "Let"),
+            Keyword::Dir => write!(f, "Struct"),
+            Keyword::File => write!(f, "File"),
+            Keyword::Fmt => write!(f, "Fmt"),
+            Keyword::Req => write!(f, "Req"),
+            Keyword::Opt => write!(f, "Opt"),
+            Keyword::For => write!(f, "For"),
+            Keyword::In => write!(f, "In"),
+            Keyword::String => write!(f, "String"),
+            Keyword::List => write!(f, "List"),
         }
     }
 }
@@ -167,12 +192,15 @@ impl TryFrom<&str> for Keyword {
     fn try_from(kind: &str) -> Result<Keyword, Self::Error> {
         match kind {
             "let" => Ok(Keyword::Let),
-            "struct" => Ok(Keyword::Struct),
+            "dir" => Ok(Keyword::Dir),
+            "file" => Ok(Keyword::File),
             "fmt" => Ok(Keyword::Fmt),
             "req" => Ok(Keyword::Req),
             "opt" => Ok(Keyword::Opt),
             "for" => Ok(Keyword::For),
             "in" => Ok(Keyword::In),
+            "string" => Ok(Keyword::String),
+            "list" => Ok(Keyword::List),
             _ => Err(()),
         }
     }

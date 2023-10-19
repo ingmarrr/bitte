@@ -34,6 +34,28 @@ pub enum SynErr {
     LxErr(#[from] LxErr),
 }
 
+// #[cfg_attr(test, derive(PartialEq))]
+#[derive(Debug, thiserror::Error)]
+pub enum ExecErr {
+    #[error("Exec: Expected [{0}], found [{1}] :: {2}")]
+    Expected(String, String, String),
+
+    #[error("Exec: AlreadyExists :: {0}")]
+    AlreadyExists(String),
+
+    #[error("Exec: NotFound :: {0}")]
+    NotFound(String),
+
+    #[error(transparent)]
+    LxErr(#[from] LxErr),
+
+    #[error(transparent)]
+    SynErr(#[from] SynErr),
+
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+}
+
 // #[derive(Debug, thiserror::Error, PartialEq, Clone)]
 // pub enum LexError {
 //     #[error("L: {line} | C: {col} :: Invalid character :: {ch}")]

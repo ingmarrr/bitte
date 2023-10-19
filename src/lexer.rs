@@ -46,7 +46,7 @@ impl<'a> Lexer<'a> {
             self.tmppos = Some(self.pos.to_owned());
         }
         let tok = self.lx_tok()?;
-        println!("Lookahead: {:#?}", tok);
+        println!("Lookahead: {}", tok);
         Ok(tok)
     }
 
@@ -55,7 +55,7 @@ impl<'a> Lexer<'a> {
             self.pos = cx;
         }
         let tok: Token<'a> = self.lx_tok()?;
-        println!("Nexttoken: {:#?}", tok);
+        println!("Nexttoken: {}", tok);
         Ok(tok)
     }
 
@@ -79,7 +79,18 @@ impl<'a> Lexer<'a> {
             },
             ch => {
                 self.take();
-                let src = if ch == b'\0' {
+                println!("tok: {}", ch as char);
+                // if self.pos.ix >= self.src.len() {
+                //     return Token {
+                //         src: self.src(&self.src[self.pos.ix..]),
+                //         val: None,
+                //         kind: TokKind::from(ch),
+                //     };
+                // } else {
+
+                // }
+                println!("{}, {}", self.pos.ix, self.src.len());
+                let src = if self.pos.ix >= self.src.len() {
                     self.src(&self.src[self.pos.ix..])
                 } else {
                     self.src(&self.src[self.pos.ix..self.pos.ix + 1])

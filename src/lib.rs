@@ -17,9 +17,14 @@ pub mod lexer;
 
 use std::io::Write;
 
+use err::ExecErr;
+use exec::{Key, Syms};
 use log::{Level, Logger};
 
-use crate::{ast::Dir, exec::Excecuter};
+use crate::{
+    exec::{Excecuter, Scope, Sym},
+    sym::Req,
+};
 
 lazy_static::lazy_static! {
     pub static ref LOGGER: Logger = Logger { level: Level::None };
@@ -27,40 +32,104 @@ lazy_static::lazy_static! {
 
 pub fn repl() {
     let mut inp = String::new();
-    println!("Tipis Repl");
     // let mut analyzer = sem::Analyzer::new();
+    println!("Tipis Repl");
+
+    let mut syms = Syms::new(Vec::new());
 
     loop {
         print!(">>\t| ");
         std::io::stdout().flush().unwrap();
         std::io::stdin().read_line(&mut inp).unwrap();
+        inp = inp.trim().to_string();
+        println!("{inp}");
 
-        if inp == "quit\n" || inp == "q\n" {
-            std::process::exit(0);
+        match run(&syms, &inp) {
+            Res::None => {}
+            _ => {
+                inp.clear();
+                continue;
+            }
         }
 
         let mut syn = syntax::Syntax::new(&inp.as_bytes());
         let res = syn.parse();
-        match res {
-            Ok(tok) => {
-                println!("{:#?}", tok);
-                let res = Excecuter::dir(Dir {
-                    name: "examples".into(),
-                    children: vec![tok],
-                    files: vec![],
-                });
-                println!("{:#?}", res)
+        println!("{:#?}", res);
+
+        if let Ok(tok) = res {
+            let name = tok.name();
+            let res = syms.add(Sym {
+                name: tok.name(),
+                ty: tok.ty(),
+                kind: tok.kind(),
+                scope: Scope::Global,
+                reqs: Req::None,
+                val: tok,
+            });
+            println!("{}", syms.has(&Key(name, Scope::Global)));
+            if let Err(err) = res {
+                println!("{:#?}", err);
             }
-            Err(err) => println!("{:#?}", err.to_string()),
         }
-        // let decl = parser.parse_decl();
-        // match decl {
-        //     Ok(decl) => {
-        //         let _ = analyzer.analyze(decl);
-        //         println!("{:#?}", analyzer);
-        //     }
-        //     Err(e) => println!("{:#?}", e),
-        // }
+
         inp.clear();
+    }
+}
+
+enum Res {
+    DidAction,
+    None,
+    InvalidArgs,
+    NotFound,
+    Err(ExecErr),
+}
+
+fn run(syms: &Syms, cmd: &str) -> Res {
+    let parts = cmd.split(' ').collect::<Vec<&str>>();
+    if parts.len() == 0 {
+        return Res::None;
+    }
+
+    match parts[0].to_lowercase().as_str() {
+        "clear" | "c" | "cls" => {
+            print!("{}[2J", 27 as char);
+            Res::DidAction
+        }
+        "quit" | "q" | "exit" | "e" => std::process::exit(0),
+        "show" | "s" => {
+            for sym in syms.symbols.values() {
+                println!("{:#?}", sym);
+            }
+            Res::DidAction
+        }
+        "make" | "mk" | "m" => {
+            println!("{:#?}", parts);
+            if parts.len() < 2 {
+                return Res::InvalidArgs;
+            }
+            let sym = syms.get(&Key(parts[1].to_string(), Scope::Global));
+            println!("{:#?}", sym);
+            if let None = sym {
+                return Res::NotFound;
+            }
+            let sym = sym.unwrap();
+            let res = match sym {
+                Sym {
+                    val: ast::Ast::Dir(dir),
+                    ..
+                } => Excecuter::dir(&syms, dir.clone()),
+                Sym {
+                    val: ast::Ast::File(file),
+                    ..
+                } => Excecuter::file(std::path::PathBuf::from("examples"), file.clone()),
+                _ => return Res::InvalidArgs,
+            };
+            println!("{:#?}", res);
+            match res {
+                Ok(_) => Res::DidAction,
+                Err(err) => Res::Err(err.into()),
+            }
+        }
+        _ => Res::None,
     }
 }
