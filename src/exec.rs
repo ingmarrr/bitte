@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     io::{Error, Write},
+    ops::Deref,
 };
 
 use crate::{
@@ -12,17 +13,33 @@ use crate::{
 pub struct Excecuter;
 
 impl Excecuter {
-    pub fn file(parent: std::path::PathBuf, file: File) -> Result<(), ExecErr> {
+    pub fn file(syms: &Syms, parent: std::path::PathBuf, file: File) -> Result<(), ExecErr> {
         let path = file.path(parent.clone());
         if !path.exists() {
             let _ = std::fs::create_dir_all(parent.clone());
         }
         let fi = std::fs::File::create(path);
         match fi {
-            Ok(mut f) => {
-                let _ = f.write_all(file.content.as_bytes());
-                Ok(())
-            }
+            Ok(mut f) => match *file.content {
+                Ast::Lit(body) => {
+                    let _ = f.write_all(body.as_bytes());
+                    return Ok(());
+                }
+                Ast::Ref(AstKind::Let, name) => {
+                    let sym = syms.get(&Key(name.clone(), Scope::Global));
+                    if let None = sym {
+                        return Err(ExecErr::NotFound(name));
+                    }
+                    let sym = sym.unwrap();
+                    if let Ast::Let(l) = &sym.val {
+                        let _ = f.write_all(l.expr.as_bytes());
+                        return Ok(());
+                    } else {
+                        return Err(ExecErr::InvalidType(name, Ty::Str.to_string()));
+                    }
+                }
+                _ => return Err(Error::new(std::io::ErrorKind::InvalidData, "Expected lit").into()),
+            },
             Err(err) => Err(err.into()),
         }
     }
@@ -40,7 +57,7 @@ impl Excecuter {
             println!("{:?}", file);
             match file {
                 Ast::File(file) => {
-                    let _ = Self::file(dir.name.clone(), file.clone());
+                    let _ = Self::file(syms, dir.name.clone(), file.clone());
                 }
                 Ast::Ref(AstKind::File, name) => {
                     let sym = syms.get(&Key(name.clone(), Scope::Global));
@@ -49,7 +66,7 @@ impl Excecuter {
                     }
                     let sym = sym.unwrap();
                     if let Ast::File(file) = &sym.val {
-                        let _ = Self::file(dir.name.clone(), file.clone());
+                        let _ = Self::file(syms, dir.name.clone(), file.clone());
                     } else {
                         return Err(ExecErr::NotFound(name));
                     }

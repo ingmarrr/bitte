@@ -59,14 +59,14 @@ pub fn repl() {
         if let Ok(tok) = res {
             let name = tok.name();
             let res = syms.add(Sym {
-                name: tok.name(),
+                name: tok.name().unwrap(),
                 ty: tok.ty(),
                 kind: tok.kind(),
                 scope: Scope::Global,
                 reqs: Req::None,
                 val: tok,
             });
-            println!("{}", syms.has(&Key(name, Scope::Global)));
+            println!("{}", syms.has(&Key(name.unwrap(), Scope::Global)));
             if let Err(err) = res {
                 println!("{:#?}", err);
             }
@@ -121,7 +121,7 @@ fn run(syms: &Syms, cmd: &str) -> Res {
                 Sym {
                     val: ast::Ast::File(file),
                     ..
-                } => Excecuter::file(std::path::PathBuf::from("examples"), file.clone()),
+                } => Excecuter::file(syms, std::path::PathBuf::from("examples"), file.clone()),
                 _ => return Res::InvalidArgs,
             };
             println!("{:#?}", res);

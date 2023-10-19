@@ -80,7 +80,7 @@ impl<'a> Syntax<'a> {
 
             if let TokKind::Symbol(Symbol::At) = next.kind {
                 self.take()?;
-                let name = self.assert(TokKind::Ident)?;
+                let dirname = self.assert(TokKind::Ident)?;
                 let ext = match self.look_ahead()?.kind {
                     TokKind::Symbol(Symbol::Dot) => {
                         self.take()?;
@@ -96,6 +96,14 @@ impl<'a> Syntax<'a> {
                             None
                         }
                     }
+                    TokKind::Closer(Closer::RCurly) => {
+                        files.push(Ast::Ref(AstKind::File, dirname.val.unwrap().to_owned()));
+                        return Ok(Dir {
+                            name: std::path::PathBuf::from(name.val.unwrap()),
+                            children,
+                            files,
+                        });
+                    }
                     _ => {
                         return Err(Trace::new(
                             self.lx.look_ahead()?.src,
@@ -107,11 +115,11 @@ impl<'a> Syntax<'a> {
                         ))
                     }
                 };
-                let name = name.val.unwrap().to_owned()
+                let refdir = dirname.val.unwrap().to_owned()
                     + &ext
                         .map(|t| ".".to_owned() + t.val.unwrap())
                         .unwrap_or("".to_owned());
-                files.push(Ast::Ref(AstKind::File, name))
+                files.push(Ast::Ref(AstKind::File, refdir))
             }
 
             match next.kind {
@@ -218,12 +226,39 @@ impl<'a> Syntax<'a> {
         };
 
         let _ = self.assert(TokKind::Symbol(Symbol::Colon))?;
+        let name = name.val.unwrap().to_owned()
+            + &ext
+                .map(|t| ".".to_owned() + t.val.unwrap())
+                .unwrap_or("".to_owned());
 
-        let content = self
-            .assert(TokKind::Literal(Literal::String(StringTy::Literal)))?
-            .val
-            .unwrap()
-            .to_owned();
+        let fi = match self.take()? {
+            Token {
+                kind: TokKind::Literal(Literal::String(StringTy::Literal)),
+                val,
+                ..
+            } => File {
+                name,
+                content: Box::new(Ast::Lit(val.unwrap().to_owned())),
+            },
+            Token {
+                kind: TokKind::Ident,
+                val,
+                ..
+            } => File {
+                name,
+                content: Box::new(Ast::Ref(AstKind::Let, val.unwrap().to_owned())),
+            },
+            _ => {
+                return Err(Trace::new(
+                    self.lx.look_ahead()?.src,
+                    SynErr::Expected(
+                        "string or identifier".into(),
+                        self.lx.look_ahead()?.kind.to_string(),
+                        self.lx.look_ahead()?.src.to_string(),
+                    ),
+                ))
+            }
+        };
 
         if let Ok(Token {
             kind: TokKind::Symbol(Symbol::Semi),
@@ -233,13 +268,7 @@ impl<'a> Syntax<'a> {
             self.take()?;
         }
 
-        Ok(File {
-            name: name.val.unwrap().to_owned()
-                + &ext
-                    .map(|t| ".".to_owned() + t.val.unwrap())
-                    .unwrap_or("".to_owned()),
-            content,
-        })
+        Ok(fi)
     }
 
     pub fn parse_let(&mut self) -> Result<Let, Trace<'a, SynErr>> {

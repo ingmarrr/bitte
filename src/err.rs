@@ -46,6 +46,9 @@ pub enum ExecErr {
     #[error("Exec: NotFound :: {0}")]
     NotFound(String),
 
+    #[error("Exec: InvalidType :: {0}, expected :: {1}")]
+    InvalidType(String, String),
+
     #[error(transparent)]
     LxErr(#[from] LxErr),
 

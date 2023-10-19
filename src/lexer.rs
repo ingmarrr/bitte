@@ -80,16 +80,7 @@ impl<'a> Lexer<'a> {
             ch => {
                 self.take();
                 println!("tok: {}", ch as char);
-                // if self.pos.ix >= self.src.len() {
-                //     return Token {
-                //         src: self.src(&self.src[self.pos.ix..]),
-                //         val: None,
-                //         kind: TokKind::from(ch),
-                //     };
-                // } else {
-
-                // }
-                println!("{}, {}", self.pos.ix, self.src.len());
+                println!("Position: {}, Length: {}", self.pos.ix, self.src.len());
                 let src = if self.pos.ix >= self.src.len() {
                     self.src(&self.src[self.pos.ix..])
                 } else {

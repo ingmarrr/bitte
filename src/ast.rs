@@ -35,6 +35,7 @@ pub enum Ast {
     Let(Let),
     Dir(Dir),
     File(File),
+    Lit(String),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -42,15 +43,17 @@ pub enum AstKind {
     Let,
     Dir,
     File,
+    Lit,
 }
 
 impl Ast {
-    pub fn name(&self) -> String {
+    pub fn name(&self) -> Option<String> {
         match self {
-            Ast::Let(l) => l.name.clone(),
-            Ast::Dir(d) => d.name.to_str().unwrap().to_string(),
-            Ast::File(f) => f.name.clone(),
-            Ast::Ref(_, s) => s.clone(),
+            Ast::Let(l) => Some(l.name.clone()),
+            Ast::Dir(d) => Some(d.name.to_str().unwrap().to_string()),
+            Ast::File(f) => Some(f.name.clone()),
+            Ast::Ref(_, s) => Some(s.clone()),
+            Ast::Lit(s) => None,
         }
     }
 
@@ -60,6 +63,7 @@ impl Ast {
             Ast::Dir(_) => Ty::Struct,
             Ast::File(_) => Ty::Str,
             Ast::Ref(_, _) => Ty::Unknown,
+            Ast::Lit(_) => Ty::Str,
         }
     }
 
@@ -69,6 +73,7 @@ impl Ast {
             Ast::Dir(_) => AstKind::Dir,
             Ast::File(_) => AstKind::File,
             Ast::Ref(k, _) => AstKind::from(k),
+            Ast::Lit(_) => AstKind::Lit,
         }
     }
 }
@@ -79,6 +84,7 @@ impl From<&AstKind> for AstKind {
             AstKind::Let => AstKind::Let,
             AstKind::Dir => AstKind::Dir,
             AstKind::File => AstKind::File,
+            AstKind::Lit => AstKind::Lit,
         }
     }
 }
@@ -93,7 +99,7 @@ pub struct Dir {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct File {
     pub name: String,
-    pub content: String,
+    pub content: Box<Ast>,
 }
 
 impl File {
