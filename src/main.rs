@@ -1,5 +1,3 @@
-use std::io::Read;
-
 use clap::Parser;
 
 #[derive(clap::Parser)]
@@ -57,11 +55,11 @@ fn main() -> std::io::Result<()> {
                 return Ok(());
             }
 
-            let tp = std::fs::read_to_string(p)?;
+            // let tp = std::fs::read_to_string(p)?;
 
             // let lx = tipis::lexer::Lexer::new(&tp.as_bytes());
             // let mut par = tipis::parsee::Parser::new(lx);
-            let mut syn = tipis::syntax::Syntax::new(&tp.as_bytes());
+            // let mut syn = tipis::syntax::Syntax::new(&tp.as_bytes());
             // let decls = match par.parse() {
             //     Ok(decls) => decls,
             //     Err(e) => {

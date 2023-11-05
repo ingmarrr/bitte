@@ -1,65 +1,46 @@
 use std::{
     collections::HashMap,
     io::{Error, Write},
-    ops::Deref,
 };
 
 use crate::{
-    ast::{Ast, AstKind, Dir, File, Ty},
+    ast::{Ast, AstKind, Dir, Expr, File, Let, Lit, Ref, Ty},
     err::ExecErr,
-    sym::Req,
 };
 
-pub struct Excecuter;
+pub struct Excecutor;
 
-impl Excecuter {
+impl Excecutor {
     pub fn file(syms: &Syms, parent: std::path::PathBuf, file: File) -> Result<(), ExecErr> {
         let path = file.path(parent.clone());
         if !path.exists() {
             let _ = std::fs::create_dir_all(parent.clone());
         }
-        let fi = std::fs::File::create(path);
-        match fi {
-            Ok(mut f) => match *file.content {
-                Ast::Lit(body) => {
-                    let _ = f.write_all(body.as_bytes());
-                    return Ok(());
-                }
-                Ast::Ref(AstKind::Let, name) => {
-                    let sym = syms.get(&Key(name.clone(), Scope::Global));
-                    if let None = sym {
-                        return Err(ExecErr::NotFound(name));
-                    }
-                    let sym = sym.unwrap();
-                    if let Ast::Let(l) = &sym.val {
-                        let _ = f.write_all(l.expr.as_bytes());
-                        return Ok(());
-                    } else {
-                        return Err(ExecErr::InvalidType(name, Ty::Str.to_string()));
-                    }
-                }
-                _ => return Err(Error::new(std::io::ErrorKind::InvalidData, "Expected lit").into()),
-            },
-            Err(err) => Err(err.into()),
-        }
+        let mut fi = std::fs::File::create(path)?;
+        let body = Self::stringify_vec(syms, file.content)?;
+        let _ = fi.write_all(body.as_bytes());
+        Ok(())
     }
 
     pub fn dir(syms: &Syms, dir: Dir) -> Result<(), ExecErr> {
         let path = std::path::Path::new(&dir.name);
-        println!("{:?}", path);
+        println!("Path: {:?}", path);
         if !path.exists() {
             let _ = std::fs::create_dir_all(&dir.name);
         }
         if path.is_file() {
             return Err(Error::new(std::io::ErrorKind::AlreadyExists, "Path is a file").into());
         }
-        for file in dir.files {
-            println!("{:?}", file);
-            match file {
+        for child in dir.children {
+            match child {
                 Ast::File(file) => {
                     let _ = Self::file(syms, dir.name.clone(), file.clone());
                 }
-                Ast::Ref(AstKind::File, name) => {
+                Ast::Ref(Ref {
+                    kind: AstKind::File,
+                    name,
+                    ..
+                }) => {
                     let sym = syms.get(&Key(name.clone(), Scope::Global));
                     if let None = sym {
                         return Err(ExecErr::NotFound(name));
@@ -68,30 +49,37 @@ impl Excecuter {
                     if let Ast::File(file) = &sym.val {
                         let _ = Self::file(syms, dir.name.clone(), file.clone());
                     } else {
-                        return Err(ExecErr::NotFound(name));
+                        return Err(ExecErr::InvalidType(
+                            sym.kind.to_string(),
+                            "file".to_string(),
+                        ));
                     }
                 }
-                _ => {
-                    return Err(Error::new(std::io::ErrorKind::InvalidData, "Expected file").into())
+                Ast::Dir(mut subdir) => {
+                    subdir.name = dir.name.join(subdir.name);
+                    let _ = Self::dir(&syms, subdir.clone());
                 }
-            }
-        }
-        for child in dir.children {
-            match child {
-                Ast::Dir(mut dir) => {
-                    dir.name = dir.name.strip_prefix(&dir.name).unwrap().to_path_buf();
-                    let _ = Self::dir(&syms, dir.clone());
-                }
-                Ast::Ref(AstKind::Dir, name) => {
+                Ast::Ref(Ref {
+                    kind: AstKind::Dir,
+                    name,
+                    ..
+                }) => {
+                    println!("Ref: {}", name);
+                    println!("Syms: {:#?}", syms);
+                    println!("Sym: {:#?}", syms.get(&Key(name.clone(), Scope::Global)));
                     let sym = syms.get(&Key(name.clone(), Scope::Global));
                     if let None = sym {
                         return Err(ExecErr::NotFound(name));
                     }
-                    let sym = sym.unwrap();
-                    if let Ast::Dir(dir) = &sym.val {
-                        let _ = Self::dir(&syms, dir.clone());
+                    let sym = sym.cloned().unwrap();
+                    if let Ast::Dir(mut subdir) = sym.val {
+                        subdir.name = dir.name.join(subdir.name);
+                        let _ = Self::dir(&syms, subdir.clone());
                     } else {
-                        return Err(ExecErr::NotFound(name));
+                        return Err(ExecErr::InvalidType(
+                            sym.kind.to_string(),
+                            "dir".to_string(),
+                        ));
                     }
                 }
                 _ => return Err(Error::new(std::io::ErrorKind::InvalidData, "Expected dir").into()),
@@ -99,8 +87,58 @@ impl Excecuter {
         }
         Ok(())
     }
+
+    fn stringify(syms: &Syms, expr: Expr) -> Result<String, ExecErr> {
+        let mut buf = String::new();
+        match expr {
+            Expr::Lit(Lit::String(lit)) => buf.push_str(&lit),
+            Expr::Ref(re) => {
+                let sym = syms
+                    .get(&Key(re.name.clone(), Scope::Global))
+                    .ok_or(ExecErr::NotFound(re.name.clone()))?;
+                if re.kind != sym.kind {
+                    return Err(ExecErr::InvalidType(re.name, re.kind.to_string()));
+                }
+                match sym.kind {
+                    AstKind::Req => {
+                        if let Ast::Req(r) = sym.val.clone() {
+                            buf.push_str(&r.expr);
+                        } else {
+                            return Err(ExecErr::InvalidType(re.name, re.kind.to_string()));
+                        }
+                    }
+                    AstKind::Lit => {
+                        if let Ast::Lit(Lit::String(lit)) = sym.val.clone() {
+                            buf.push_str(&lit);
+                        } else {
+                            return Err(ExecErr::InvalidType(re.name, re.kind.to_string()));
+                        }
+                    }
+                    AstKind::Let => {
+                        if let Ast::Let(Let { expr, .. }) = sym.val.clone() {
+                            buf.push_str(&Self::stringify_vec(syms, expr)?);
+                        } else {
+                            return Err(ExecErr::InvalidType(re.name, re.kind.to_string()));
+                        }
+                    }
+                    _ => return Err(ExecErr::InvalidType(re.name, re.kind.to_string())),
+                }
+            }
+            _ => return Err(ExecErr::InvalidType("".to_string(), "".to_string())),
+        }
+        Ok(buf)
+    }
+
+    fn stringify_vec(syms: &Syms, exprs: Vec<Expr>) -> Result<String, ExecErr> {
+        let mut buf = String::new();
+        for expr in exprs.into_iter() {
+            buf.push_str(&Self::stringify(syms, expr)?);
+        }
+        Ok(buf)
+    }
 }
 
+#[derive(Debug)]
 pub struct Syms {
     pub args: Vec<(String, String)>,
     pub symbols: HashMap<Key, Sym>,
@@ -135,13 +173,13 @@ impl Syms {
 #[derive(PartialEq, Eq, Hash, Debug)]
 pub struct Key(pub String, pub Scope);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Sym {
     pub name: String,
     pub ty: Ty,
     pub kind: AstKind,
     pub scope: Scope,
-    pub reqs: Req,
+    pub reqs: Vec<(String, Ty)>,
     pub val: Ast,
 }
 

@@ -5,7 +5,9 @@ pub mod decl;
 pub mod err;
 pub mod exec;
 pub mod expr;
+pub mod fifo;
 pub mod sem;
+pub mod stack;
 pub mod sym;
 pub mod syntax;
 pub mod token;
@@ -22,8 +24,8 @@ use exec::{Key, Syms};
 use log::{Level, Logger};
 
 use crate::{
-    exec::{Excecuter, Scope, Sym},
-    sym::Req,
+    ast::{Ast, AstKind, Req, Ty},
+    exec::{Excecutor, Scope, Sym},
 };
 
 lazy_static::lazy_static! {
@@ -41,10 +43,14 @@ pub fn repl() {
         print!(">>\t| ");
         std::io::stdout().flush().unwrap();
         std::io::stdin().read_line(&mut inp).unwrap();
+        if inp == "\n" {
+            inp.clear();
+            continue;
+        }
         inp = inp.trim().to_string();
         println!("{inp}");
 
-        match run(&syms, &inp) {
+        match run(&mut syms, &inp) {
             Res::None => {}
             _ => {
                 inp.clear();
@@ -53,23 +59,25 @@ pub fn repl() {
         }
 
         let mut syn = syntax::Syntax::new(&inp.as_bytes());
-        let res = syn.parse();
+        let res = syn.parse_all();
         println!("{:#?}", res);
 
-        if let Ok(tok) = res {
-            let name = tok.name();
-            let res = syms.add(Sym {
-                name: tok.name().unwrap(),
-                ty: tok.ty(),
-                kind: tok.kind(),
-                scope: Scope::Global,
-                reqs: Req::None,
-                val: tok,
-            });
-            println!("{}", syms.has(&Key(name.unwrap(), Scope::Global)));
-            if let Err(err) = res {
-                println!("{:#?}", err);
+        if let Ok(toks) = res {
+            for tok in toks.into_iter() {
+                let res = syms.add(Sym {
+                    name: tok.alias().or(tok.name()).unwrap(),
+                    ty: tok.ty(),
+                    kind: tok.kind(),
+                    scope: Scope::Global,
+                    reqs: Vec::new(),
+                    val: tok,
+                });
+                if let Err(err) = res {
+                    println!("{:#?}", err);
+                }
             }
+        } else {
+            println!("{}", res.unwrap_err().display_line(inp.as_bytes()));
         }
 
         inp.clear();
@@ -84,7 +92,7 @@ enum Res {
     Err(ExecErr),
 }
 
-fn run(syms: &Syms, cmd: &str) -> Res {
+fn run(syms: &mut Syms, cmd: &str) -> Res {
     let parts = cmd.split(' ').collect::<Vec<&str>>();
     if parts.len() == 0 {
         return Res::None;
@@ -106,6 +114,25 @@ fn run(syms: &Syms, cmd: &str) -> Res {
             println!("{:#?}", parts);
             if parts.len() < 2 {
                 return Res::InvalidArgs;
+            } else if parts.len() > 2 {
+                for part in &parts[2..] {
+                    let arg_parts = part.split('=').collect::<Vec<&str>>();
+                    if arg_parts.len() != 2 {
+                        return Res::InvalidArgs;
+                    }
+                    let _ = syms.add(Sym {
+                        name: arg_parts[0].to_string(),
+                        ty: Ty::Str,
+                        kind: AstKind::Lit,
+                        scope: Scope::Global,
+                        reqs: Vec::new(),
+                        val: Ast::Req(Req {
+                            name: arg_parts[0].to_string(),
+                            ty: Ty::Str,
+                            expr: arg_parts[1].to_string(),
+                        }),
+                    });
+                }
             }
             let sym = syms.get(&Key(parts[1].to_string(), Scope::Global));
             println!("{:#?}", sym);
@@ -113,15 +140,16 @@ fn run(syms: &Syms, cmd: &str) -> Res {
                 return Res::NotFound;
             }
             let sym = sym.unwrap();
+
             let res = match sym {
                 Sym {
                     val: ast::Ast::Dir(dir),
                     ..
-                } => Excecuter::dir(&syms, dir.clone()),
+                } => Excecutor::dir(&syms, dir.clone()),
                 Sym {
                     val: ast::Ast::File(file),
                     ..
-                } => Excecuter::file(syms, std::path::PathBuf::from("examples"), file.clone()),
+                } => Excecutor::file(syms, std::path::PathBuf::from("examples"), file.clone()),
                 _ => return Res::InvalidArgs,
             };
             println!("{:#?}", res);

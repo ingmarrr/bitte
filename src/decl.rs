@@ -25,7 +25,7 @@ impl Decl {
 
     pub fn ty(&self) -> Ty {
         match self {
-            Decl::Struct(_) => Ty::Struct,
+            Decl::Struct(_) => Ty::Dir,
             Decl::Let(l) => l.ty,
             Decl::Fmt(_) => Ty::Str,
             Decl::Required(r) => r.ty,

@@ -63,10 +63,10 @@ impl std::fmt::Display for crate::log::Level {
     }
 }
 
-pub fn info(s: &str) {
-    #[cfg(any(log_info, everything))]
-    crate::LOGGER.println(Level::INFO, s);
-}
+// pub fn info(s: &str) {
+//     #[cfg(any(log_info, everything))]
+//     crate::LOGGER.println(Level::INFO, s);
+// }
 
 #[macro_export]
 macro_rules! log {

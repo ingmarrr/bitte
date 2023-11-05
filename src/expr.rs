@@ -15,7 +15,7 @@ impl Expr {
             Expr::Ident(_) => Ty::Unknown,
             Expr::Lit(lit) => lit.ty(),
             Expr::Fmt(_) | Expr::Inserted(_) => Ty::Str,
-            Expr::Struct(_) => Ty::Struct,
+            Expr::Struct(_) => Ty::Dir,
         }
     }
 }
@@ -55,7 +55,6 @@ pub enum Insert {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Lit {
     Str(String),
-    Char(char),
     List(List),
 }
 
@@ -63,7 +62,6 @@ impl Lit {
     pub fn ty(&self) -> Ty {
         match self {
             Lit::Str(_) => Ty::Str,
-            Lit::Char(_) => Ty::Char,
             Lit::List(_) => Ty::List,
         }
     }

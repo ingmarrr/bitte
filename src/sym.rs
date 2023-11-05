@@ -17,8 +17,8 @@ impl std::fmt::Display for Scope {
     }
 }
 
-#[derive(PartialEq, Debug)]
-pub enum Req {
+#[derive(PartialEq, Debug, Clone)]
+pub enum Requires {
     Some(Vec<(String, Ty)>),
     None,
 }
@@ -29,7 +29,7 @@ pub struct Sym {
     pub ty: Ty,
     pub kind: Kind,
     pub scope: Scope,
-    pub reqs: Req,
+    pub reqs: Requires,
 }
 
 #[derive(Debug)]
@@ -78,7 +78,7 @@ impl SymTable {
                 scope: Scope::Global,
                 ty: l.ty.clone(),
                 kind: Kind::Let,
-                reqs: Req::None,
+                reqs: Requires::None,
             }),
             Decl::Struct(s) => {
                 for (name, ty) in &s.params {
@@ -92,15 +92,15 @@ impl SymTable {
                         scope: Scope::Local(s.name.to_owned()),
                         ty: ty.clone(),
                         kind: Kind::Struct,
-                        reqs: Req::None,
+                        reqs: Requires::None,
                     })
                 }
                 syms.push(Sym {
                     name: s.name.to_owned(),
                     scope: Scope::Global,
-                    ty: Ty::Struct,
+                    ty: Ty::Dir,
                     kind: Kind::Struct,
-                    reqs: Req::Some(s.params.to_owned()),
+                    reqs: Requires::Some(s.params.to_owned()),
                 })
             }
             Decl::Fmt(f) => {
@@ -115,7 +115,7 @@ impl SymTable {
                         scope: Scope::Local(f.name.to_owned()),
                         ty: ty.clone(),
                         kind: Kind::Fmt,
-                        reqs: Req::None,
+                        reqs: Requires::None,
                     })
                 }
                 syms.push(Sym {
@@ -123,7 +123,7 @@ impl SymTable {
                     scope: Scope::Global,
                     ty: Ty::Str,
                     kind: Kind::Fmt,
-                    reqs: Req::Some(f.params.to_owned()),
+                    reqs: Requires::Some(f.params.to_owned()),
                 })
             }
             Decl::Required(r) => syms.push(Sym {
@@ -131,14 +131,14 @@ impl SymTable {
                 scope: Scope::Global,
                 ty: r.ty.clone(),
                 kind: Kind::Required,
-                reqs: Req::None,
+                reqs: Requires::None,
             }),
             Decl::Optional(o) => syms.push(Sym {
                 name: o.name.to_owned(),
                 scope: Scope::Global,
                 ty: o.ty.clone(),
                 kind: Kind::Optional,
-                reqs: Req::None,
+                reqs: Requires::None,
             }),
         }
         (syms, errs)

@@ -1,29 +1,40 @@
-use crate::{decl::Decl, expr::Expr};
-
-#[derive(Debug, PartialEq)]
-pub enum Stmt {
-    Decl(Decl),
-    Expr(Expr),
-}
+// #[derive(Debug, PartialEq)]
+// pub enum Stmt {
+//     Decl(Decl),
+//     Expr(Expr),
+// }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Ty {
     Str,
-    Char,
     Int,
     List,
-    Struct,
+    Dir,
+    File,
     Unknown,
+}
+
+impl From<&str> for Ty {
+    fn from(s: &str) -> Self {
+        match s {
+            "str" => Ty::Str,
+            "int" => Ty::Int,
+            "list" => Ty::List,
+            "dir" => Ty::Dir,
+            "file" => Ty::File,
+            _ => Ty::Unknown,
+        }
+    }
 }
 
 impl std::fmt::Display for Ty {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Ty::Str => f.write_str("str"),
-            Ty::Char => f.write_str("char"),
             Ty::Int => f.write_str("int"),
             Ty::List => f.write_str("list"),
-            Ty::Struct => f.write_str("struct"),
+            Ty::Dir => f.write_str("dir"),
+            Ty::File => f.write_str("file"),
             Ty::Unknown => f.write_str("unknown"),
         }
     }
@@ -31,38 +42,77 @@ impl std::fmt::Display for Ty {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Ast {
-    Ref(AstKind, String),
+    Ref(Ref),
+    Req(Req),
     Let(Let),
     Dir(Dir),
     File(File),
-    Lit(String),
+    Lit(Lit),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Expr {
+    Ref(Ref),
+    Lit(Lit),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum AstKind {
     Let,
+    Req,
     Dir,
     File,
     Lit,
 }
 
+impl std::fmt::Display for AstKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AstKind::Let => f.write_str("let"),
+            AstKind::Req => f.write_str("req"),
+            AstKind::Dir => f.write_str("dir"),
+            AstKind::File => f.write_str("file"),
+            AstKind::Lit => f.write_str("lit"),
+        }
+    }
+}
+
 impl Ast {
+    pub fn alias(&self) -> Option<String> {
+        match self {
+            Ast::Dir(d) => Some(d.alias.clone()),
+            Ast::File(f) => Some(f.alias.clone()),
+            _ => None,
+        }
+    }
+
     pub fn name(&self) -> Option<String> {
         match self {
             Ast::Let(l) => Some(l.name.clone()),
+            Ast::Req(r) => Some(r.name.clone()),
             Ast::Dir(d) => Some(d.name.to_str().unwrap().to_string()),
             Ast::File(f) => Some(f.name.clone()),
-            Ast::Ref(_, s) => Some(s.clone()),
-            Ast::Lit(s) => None,
+            Ast::Ref(r) => Some(r.name.clone()),
+            Ast::Lit(_) => None,
+        }
+    }
+
+    pub fn reqs(&self) -> Vec<(String, Ty)> {
+        match self {
+            Ast::Let(l) => l.params.clone(),
+            Ast::Dir(d) => d.params.clone(),
+            Ast::File(f) => f.params.clone(),
+            Ast::Req(_) | Ast::Ref(_) | Ast::Lit(_) => Vec::new(),
         }
     }
 
     pub fn ty(&self) -> Ty {
         match self {
-            Ast::Let(l) => l.ty.clone(),
-            Ast::Dir(_) => Ty::Struct,
-            Ast::File(_) => Ty::Str,
-            Ast::Ref(_, _) => Ty::Unknown,
+            Ast::Let(l) => l.ty,
+            Ast::Req(r) => r.ty,
+            Ast::Dir(_) => Ty::Dir,
+            Ast::File(_) => Ty::File,
+            Ast::Ref(_) => Ty::Unknown,
             Ast::Lit(_) => Ty::Str,
         }
     }
@@ -70,9 +120,10 @@ impl Ast {
     pub fn kind(&self) -> AstKind {
         match self {
             Ast::Let(_) => AstKind::Let,
+            Ast::Req(_) => AstKind::Req,
             Ast::Dir(_) => AstKind::Dir,
             Ast::File(_) => AstKind::File,
-            Ast::Ref(k, _) => AstKind::from(k),
+            Ast::Ref(r) => r.kind.clone(),
             Ast::Lit(_) => AstKind::Lit,
         }
     }
@@ -82,6 +133,7 @@ impl From<&AstKind> for AstKind {
     fn from(k: &AstKind) -> Self {
         match k {
             AstKind::Let => AstKind::Let,
+            AstKind::Req => AstKind::Req,
             AstKind::Dir => AstKind::Dir,
             AstKind::File => AstKind::File,
             AstKind::Lit => AstKind::Lit,
@@ -91,15 +143,18 @@ impl From<&AstKind> for AstKind {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Dir {
+    pub params: Vec<(String, Ty)>,
     pub name: std::path::PathBuf,
+    pub alias: String,
     pub children: Vec<Ast>,
-    pub files: Vec<Ast>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct File {
+    pub params: Vec<(String, Ty)>,
     pub name: String,
-    pub content: Box<Ast>,
+    pub alias: String,
+    pub content: Vec<Expr>,
 }
 
 impl File {
@@ -111,6 +166,27 @@ impl File {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Let {
     pub name: String,
+    pub params: Vec<(String, Ty)>,
+    pub ty: Ty,
+    pub expr: Vec<Expr>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Req {
+    pub name: String,
     pub ty: Ty,
     pub expr: String,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Lit {
+    String(String),
+    File(String, Box<Ast>),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Ref {
+    pub name: String,
+    pub kind: AstKind,
+    pub args: Vec<(String, Expr)>,
 }

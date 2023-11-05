@@ -1,39 +1,98 @@
 
 # Strings
 
-```tipis
-let hello = "Hello World"
+```ti
+dir foo = baz {
+    barbaz {
+    foo.txt: {"# Hello World."},
+    bar.md: {"# barbar
+        ## baz
+    "}}
+}
+
+file "bar.txt" { 
+    "Hello World" 
+}
+
+
+
+
+let hello: str =  {" hello world "}
+
+
+
 ```
 
-# Lists
+With types
 
-```tipis
-let list = ["Hello", "World"]
-let list = [("John", 42), ("Jane", 24)]
+```ti
+let hello = {"Hello World"}
 ```
 
-# Insertions
+With input
 
-```tipis
-let john = "John"
-let hello = "Hello $john$"
+```ti
+let hello(name: str) =
+    {"# Hello {$ name $}."}
+
+let hey(req names: list<str>) =
+    {$ for name in names {"
+        # Hello {$ name $}.
+    "}$}
 ```
 
-# Formats
+# Files
 
-```tipis
-let hello(name: str) = "Hello $name$"
-hello("John")
+```ti
+file hello: "hello.txt" {" Hello World "}
+
+file hello.txt {$ name $}
+
+file "hello.txt" {" Hello World "}
 ```
 
-# For loops in insertions
+With input for files:
 
-```tipis
-let names = ["John", "Jane", "Gustav"]
-let hello(name: str) = "Hello $name"
-let greeting = "Greetings: $hello(name) for name in names$"
+```ti
+file hello(name: string): "hello.txt" {"
+    Hello {$ name $}
+"}
+```
 
-let names_ages = [("John", 42), ("Jane", 24)]
-let hello(name: str, age: int) = "Hello $name, you are $age years old"
-let greetings = "Greetings: $hello(name, age) for name, age in names_ages$"
+# Directories
+
+```ti
+dir foo {
+    bar {
+        baz
+    }
+}
+```
+
+# Combining it
+
+```ti
+
+let prog(name: str) {"Hello {$ name $}"}
+
+file hello: "hello.txt" = {"# Running: {$ prog $} "}
+
+dir foo: "foobarbazdirectory" {
+    bar {
+        baz {
+            README.md: {"# Foobar"}
+        }
+    }
+}
+
+dir main {
+    bar.txt {"# Hello {$ prog $}.
+        
+        This is a test.
+
+        ## Running {$ prog $}
+    "},
+    @hello,
+    #foo
+}
 ```

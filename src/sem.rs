@@ -279,7 +279,7 @@ impl Analyzer {
                 None => Err(SemanticError::UnknownType(i)),
             },
             Expr::Lit(lit) => match lit {
-                Lit::Str(_) | Lit::Char(_) => Ok(()),
+                Lit::Str(_) => Ok(()),
                 Lit::List(_) => Err(SemanticError::InvalidType("list".to_owned())),
             },
             Expr::Fmt(FmtCall { name, fields }) => {

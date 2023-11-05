@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use crate::token::Source;
+use crate::token::{Source, Token};
 
 pub enum LxErrKind {
     InvalidToken,
@@ -185,6 +185,69 @@ where
 {
     pub fn new(src: Source<'a>, err: E) -> Self {
         Self { src, err }
+    }
+
+    pub fn display_line(&self, src: &'a [u8]) -> String {
+        let mut line = String::new();
+        let mut start_ix = self.src.bix;
+        let mut end_ix = self.src.bix + self.src.len - 1;
+        let red = "\x1b[31m";
+        let green = "\x1b[32m";
+        let reset = "\x1b[0m";
+
+        loop {
+            if src[start_ix] == b'\n' || start_ix == 0 {
+                break;
+            }
+            start_ix -= 1;
+        }
+
+        loop {
+            if src[end_ix] == b'\n' || end_ix == src.len() - 1 {
+                break;
+            }
+            end_ix += 1;
+        }
+
+        for i in start_ix..=end_ix {
+            if i >= self.src.bix && i < self.src.bix + self.src.len {
+                line.push_str(red);
+            } else {
+                line.push_str(green);
+            }
+            line.push(src[i] as char);
+            if i == self.src.bix {
+                line.push_str(reset);
+            }
+        }
+        line.push_str(reset);
+
+        // line.push_str(&std::str::from_utf8(&src[start_ix..end_ix]).unwrap());
+
+        line.push('\n');
+
+        for i in 0..line.len() {
+            if i < self.src.bix - start_ix {
+                line.push(' ');
+            } else if i >= self.src.bix - start_ix && i < self.src.bix - start_ix + self.src.len {
+                line.push_str(red);
+                line.push('^');
+                line.push_str(reset);
+            } else {
+                break;
+            }
+        }
+
+        line
+    }
+}
+
+impl<'a> Trace<'a, SynErr> {
+    pub fn new_syn(tok: Token<'a>, msg: &str) -> Trace<'a, SynErr> {
+        Self {
+            src: tok.src,
+            err: SynErr::Expected(msg.to_string(), tok.kind.to_string(), tok.src.to_string()),
+        }
     }
 }
 
