@@ -97,7 +97,7 @@ impl Ast {
         }
     }
 
-    pub fn reqs(&self) -> Vec<(String, Ty)> {
+    pub fn params(&self) -> Vec<(String, Ty)> {
         match self {
             Ast::Let(l) => l.params.clone(),
             Ast::Dir(d) => d.params.clone(),

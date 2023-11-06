@@ -132,8 +132,8 @@ impl<'a> Syntax<'a> {
             TokKind::Symbol(Symbol::Pound),
             TokKind::Symbol(Symbol::At),
             TokKind::Symbol(Symbol::Bang),
-            TokKind::Ident,
             TokKind::Opener(Opener::DQuote),
+            TokKind::Ident,
         ]) {
             match tok.kind {
                 TokKind::Symbol(Symbol::Pound)
@@ -147,6 +147,7 @@ impl<'a> Syntax<'a> {
                     if let Ok(_) = self.consume_if(TokKind::Closer(Closer::RCurly)) {
                         break;
                     }
+                    self.assert(TokKind::Symbol(Symbol::Comma))?;
                 }
                 TokKind::Opener(Opener::DQuote) => {
                     let name = self.assert(TokKind::Literal(Literal::String))?.val.unwrap();
@@ -171,6 +172,20 @@ impl<'a> Syntax<'a> {
                     }
                 }
                 TokKind::Ident => {
+                    if let TokKind::Opener(Opener::LCurly) = self.look_ahead_one()?.kind {
+                        children.push(Ast::Dir(Dir {
+                            params: Vec::new(),
+                            name: tok.val.unwrap().to_owned().into(),
+                            alias: tok.val.unwrap().to_owned(),
+                            children: self.parse_children()?,
+                        }));
+                        self.assert_union(&[
+                            TokKind::Symbol(Symbol::Comma),
+                            TokKind::Closer(Closer::RCurly),
+                        ])?;
+                        // continue;
+                    }
+
                     let next = self.assert_union(&[
                         TokKind::Symbol(Symbol::Comma),
                         TokKind::Symbol(Symbol::Colon),
@@ -352,24 +367,6 @@ impl<'a> Syntax<'a> {
     //     }
     // }
 
-    pub fn parse_file_ref(&mut self) -> Result<String, Trace<'a, SynErr>> {
-        let name = self.assert(TokKind::Ident)?;
-        let mut buf = name.val.unwrap().to_owned();
-        while let Ok(Token {
-            kind: TokKind::Symbol(Symbol::Dot),
-            ..
-        }) = self.assert_union(&[
-            TokKind::Symbol(Symbol::Dot),
-            TokKind::Symbol(Symbol::Comma),
-            TokKind::Closer(Closer::RCurly),
-        ]) {
-            self.take()?;
-            let ext = self.assert(TokKind::Ident)?;
-            buf = buf + "." + &ext.val.unwrap();
-        }
-        Ok(buf)
-    }
-
     pub fn parse_file_lit(&mut self) -> Result<File, Trace<'a, SynErr>> {
         let (ident, mut path) =
             match self.assert_union(&[TokKind::Opener(Opener::DQuote), TokKind::Ident])? {
@@ -483,8 +480,8 @@ impl<'a> Syntax<'a> {
                 match tok.kind {
                     TokKind::Ident => {
                         self.assert(TokKind::Symbol(Symbol::Colon))?;
-                        let arg_val = self
-                            .assert_union(&[TokKind::Ident, TokKind::Literal(Literal::String)])?;
+                        let arg_val =
+                            self.assert_union(&[TokKind::Ident, TokKind::Opener(Opener::DQuote)])?;
                         match arg_val.kind {
                             TokKind::Ident => {
                                 let arg_args = self.parse_args()?;
@@ -497,12 +494,20 @@ impl<'a> Syntax<'a> {
                                     }),
                                 ));
                             }
-                            TokKind::Literal(Literal::String) => {
+                            TokKind::Opener(Opener::DQuote) => {
+                                let arg_string = self.assert(TokKind::Literal(Literal::String))?;
+                                let _ = self.assert(TokKind::Closer(Closer::DQuote));
                                 args.push((
                                     tok.val.unwrap().to_owned(),
-                                    Expr::Lit(Lit::String(arg_val.val.unwrap().to_owned())),
+                                    Expr::Lit(Lit::String(arg_string.val.unwrap().to_owned())),
                                 ));
                             }
+                            // TokKind::Literal(Literal::String) => {
+                            //     args.push((
+                            //         tok.val.unwrap().to_owned(),
+                            //         Expr::Lit(Lit::String(arg_val.val.unwrap().to_owned())),
+                            //     ));
+                            // }
                             _ => unreachable!(),
                         }
                     }
@@ -510,7 +515,6 @@ impl<'a> Syntax<'a> {
                     _ => {}
                 }
             }
-            self.assert(TokKind::Symbol(Symbol::Equal))?;
             Ok(args)
         } else {
             Ok(Vec::new())
@@ -545,9 +549,21 @@ impl<'a> Syntax<'a> {
                     openers.push(tok.try_into().unwrap());
                     buf.push(Expr::Lit(Lit::String(string.val.unwrap().to_owned())));
                 }
-                TokKind::Closer(Closer::RCurlyDQuote)
-                | TokKind::Closer(Closer::RCurlyDollar)
-                | TokKind::Closer(Closer::DQuote) => {
+                TokKind::Closer(Closer::RCurlyDollar) => {
+                    if let Ok(op) = openers.peek() {
+                        if op.closer() == tok.try_into().unwrap() {
+                            let _ = openers.pop();
+                            if let Ok(tok) = self.consume_if(TokKind::Literal(Literal::String)) {
+                                buf.push(Expr::Lit(Lit::String(tok.val.unwrap().to_owned())));
+                            }
+                        } else {
+                            return Err(Trace::new_syn(tok, "unmatched closer"));
+                        }
+                    } else {
+                        return Err(Trace::new_syn(tok, "unmatched closer"));
+                    }
+                }
+                TokKind::Closer(Closer::RCurlyDQuote) | TokKind::Closer(Closer::DQuote) => {
                     if let Ok(op) = openers.peek() {
                         println!("OP:     {:?}", op);
                         println!("CLOSER: {:?}", Closer::try_from(tok));
@@ -689,7 +705,7 @@ mod test {
                 let ast = syn.parse().expect("Failed to parse");
                 assert_eq!(ast.name(), Some($name.into()));
                 assert_eq!(ast.ty(), crate::ast::Ty::File);
-                assert_eq!(ast.reqs(), $params);
+                assert_eq!(ast.params(), $params);
                 assert_eq!(ast.kind(), crate::ast::AstKind::File);
                 if let crate::ast::Ast::File(f) = ast {
                     assert_eq!(f.name, $name);

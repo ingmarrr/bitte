@@ -11,7 +11,6 @@ pub mod stack;
 pub mod sym;
 pub mod syntax;
 pub mod token;
-pub mod visitor;
 #[macro_use]
 pub mod log;
 pub mod charset;
@@ -34,7 +33,6 @@ lazy_static::lazy_static! {
 
 pub fn repl() {
     let mut inp = String::new();
-    // let mut analyzer = sem::Analyzer::new();
     println!("Tipis Repl");
 
     let mut syms = Syms::new(Vec::new());
@@ -70,7 +68,7 @@ pub fn repl() {
                     kind: tok.kind(),
                     scope: Scope::Global,
                     reqs: Vec::new(),
-                    val: tok,
+                    val: tok.clone(),
                 });
                 if let Err(err) = res {
                     println!("{:#?}", err);
@@ -149,7 +147,12 @@ fn run(syms: &mut Syms, cmd: &str) -> Res {
                 Sym {
                     val: ast::Ast::File(file),
                     ..
-                } => Excecutor::file(syms, std::path::PathBuf::from("examples"), file.clone()),
+                } => Excecutor::file(
+                    syms,
+                    std::path::PathBuf::from("examples"),
+                    file.clone(),
+                    Vec::new(),
+                ),
                 _ => return Res::InvalidArgs,
             };
             println!("{:#?}", res);

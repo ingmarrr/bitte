@@ -49,6 +49,9 @@ pub enum ExecErr {
     #[error("Exec: InvalidType :: {0}, expected :: {1}")]
     InvalidType(String, String),
 
+    #[error("Exec: InvalidArgument :: {0}")]
+    InvalidArgument(String),
+
     #[error(transparent)]
     LxErr(#[from] LxErr),
 

@@ -11,13 +11,18 @@ use crate::{
 pub struct Excecutor;
 
 impl Excecutor {
-    pub fn file(syms: &Syms, parent: std::path::PathBuf, file: File) -> Result<(), ExecErr> {
+    pub fn file(
+        syms: &Syms,
+        parent: std::path::PathBuf,
+        file: File,
+        args: Vec<(String, Expr)>,
+    ) -> Result<(), ExecErr> {
         let path = file.path(parent.clone());
         if !path.exists() {
             let _ = std::fs::create_dir_all(parent.clone());
         }
         let mut fi = std::fs::File::create(path)?;
-        let body = Self::stringify_vec(syms, file.content)?;
+        let body = Self::stringify_vec(syms, file.content, args)?;
         let _ = fi.write_all(body.as_bytes());
         Ok(())
     }
@@ -34,12 +39,12 @@ impl Excecutor {
         for child in dir.children {
             match child {
                 Ast::File(file) => {
-                    let _ = Self::file(syms, dir.name.clone(), file.clone());
+                    let _ = Self::file(syms, dir.name.clone(), file.clone(), Vec::new());
                 }
                 Ast::Ref(Ref {
                     kind: AstKind::File,
                     name,
-                    ..
+                    args,
                 }) => {
                     let sym = syms.get(&Key(name.clone(), Scope::Global));
                     if let None = sym {
@@ -47,7 +52,7 @@ impl Excecutor {
                     }
                     let sym = sym.unwrap();
                     if let Ast::File(file) = &sym.val {
-                        let _ = Self::file(syms, dir.name.clone(), file.clone());
+                        let _ = Self::file(syms, dir.name.clone(), file.clone(), args);
                     } else {
                         return Err(ExecErr::InvalidType(
                             sym.kind.to_string(),
@@ -64,9 +69,6 @@ impl Excecutor {
                     name,
                     ..
                 }) => {
-                    println!("Ref: {}", name);
-                    println!("Syms: {:#?}", syms);
-                    println!("Sym: {:#?}", syms.get(&Key(name.clone(), Scope::Global)));
                     let sym = syms.get(&Key(name.clone(), Scope::Global));
                     if let None = sym {
                         return Err(ExecErr::NotFound(name));
@@ -88,14 +90,29 @@ impl Excecutor {
         Ok(())
     }
 
-    fn stringify(syms: &Syms, expr: Expr) -> Result<String, ExecErr> {
+    fn stringify(
+        syms: &Syms,
+        expr: Expr,
+        scope_args: Vec<(String, Expr)>,
+    ) -> Result<String, ExecErr> {
         let mut buf = String::new();
         match expr {
             Expr::Lit(Lit::String(lit)) => buf.push_str(&lit),
             Expr::Ref(re) => {
-                let sym = syms
-                    .get(&Key(re.name.clone(), Scope::Global))
-                    .ok_or(ExecErr::NotFound(re.name.clone()))?;
+                let sym = if let Some(sym) = syms.get(&Key(re.name.clone(), Scope::Global)) {
+                    sym
+                } else {
+                    if let Some((_, expr)) = scope_args
+                        .iter()
+                        .find(|(name, _)| name == &re.name)
+                        .cloned()
+                    {
+                        return Self::stringify(syms, expr, scope_args);
+                    } else {
+                        return Err(ExecErr::NotFound(re.name));
+                    }
+                };
+
                 if re.kind != sym.kind {
                     return Err(ExecErr::InvalidType(re.name, re.kind.to_string()));
                 }
@@ -107,16 +124,16 @@ impl Excecutor {
                             return Err(ExecErr::InvalidType(re.name, re.kind.to_string()));
                         }
                     }
-                    AstKind::Lit => {
-                        if let Ast::Lit(Lit::String(lit)) = sym.val.clone() {
-                            buf.push_str(&lit);
-                        } else {
-                            return Err(ExecErr::InvalidType(re.name, re.kind.to_string()));
-                        }
-                    }
+                    // AstKind::Lit => {
+                    //     if let Ast::Lit(Lit::String(lit)) = sym.val.clone() {
+                    //         buf.push_str(&lit);
+                    //     } else {
+                    //         return Err(ExecErr::InvalidType(re.name, re.kind.to_string()));
+                    //     }
+                    // }
                     AstKind::Let => {
                         if let Ast::Let(Let { expr, .. }) = sym.val.clone() {
-                            buf.push_str(&Self::stringify_vec(syms, expr)?);
+                            buf.push_str(&Self::stringify_vec(syms, expr, scope_args)?);
                         } else {
                             return Err(ExecErr::InvalidType(re.name, re.kind.to_string()));
                         }
@@ -129,10 +146,14 @@ impl Excecutor {
         Ok(buf)
     }
 
-    fn stringify_vec(syms: &Syms, exprs: Vec<Expr>) -> Result<String, ExecErr> {
+    fn stringify_vec(
+        syms: &Syms,
+        exprs: Vec<Expr>,
+        args: Vec<(String, Expr)>,
+    ) -> Result<String, ExecErr> {
         let mut buf = String::new();
         for expr in exprs.into_iter() {
-            buf.push_str(&Self::stringify(syms, expr)?);
+            buf.push_str(&Self::stringify(syms, expr, args.clone())?);
         }
         Ok(buf)
     }

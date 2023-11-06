@@ -164,11 +164,14 @@ impl<'a> Lexer<'a> {
                 Some(b'}') => {
                     self.take();
                     self.take();
-                    Token {
+                    let tok = Token {
                         src: self.src(&self.src[self.cx.ix - 2..self.cx.ix]),
                         val: None,
                         kind: TokKind::Closer(Closer::RCurlyDollar),
-                    }
+                    };
+                    let st = self.lx_str(false)?;
+                    self.cx.pending.push(st);
+                    tok
                 }
                 Some(ch) => {
                     self.take();
@@ -182,12 +185,12 @@ impl<'a> Lexer<'a> {
             },
             ch => {
                 self.take();
-                println!(
-                    "Tok: {}, Position: {}, Length: {}",
-                    ch as char,
-                    self.cx.ix,
-                    self.src.len()
-                );
+                // println!(
+                //     "Tok: {}, Position: {}, Length: {}",
+                //     ch as char,
+                //     self.cx.ix,
+                //     self.src.len()
+                // );
                 Token {
                     src: if self.cx.ix >= self.src.len() {
                         self.src(&self.src[self.cx.ix - 1..])
@@ -254,7 +257,7 @@ impl<'a> Lexer<'a> {
     fn lx_num(&mut self) -> Result<Token<'a>, Trace<'a, LxErr>> {
         let six = self.cx.ix;
         while let Some(ch) = self.peek() {
-            if !(b'0' <= ch && ch <= b'9') {
+            if !(b'.' <= ch && ch <= b'9') {
                 break;
             }
             self.take();
