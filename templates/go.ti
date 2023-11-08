@@ -1,0 +1,20 @@
+req name: str;
+
+let main_func = 
+{"
+    package main;
+
+    import "fmt"
+
+    func main() {
+        fmt.Println("Hello World".)
+    }
+"};
+
+main dir project: !name 
+{
+    src {
+        "main.go": main_func
+    },
+    "go.mod",
+}

@@ -4,13 +4,26 @@ use std::{
 };
 
 use crate::{
-    ast::{Ast, AstKind, Dir, Expr, File, Let, Lit, Ref, Ty},
+    ast::{Ast, AstKind, Dir, Expr, File, Let, Ref, Ty},
     err::ExecErr,
 };
 
-pub struct Excecutor;
+pub struct Exec;
 
-impl Excecutor {
+impl Exec {
+    pub fn run(syms: &Syms, ast: Ast) -> Result<(), ExecErr> {
+        match ast {
+            Ast::File(file) => {
+                let _ = Self::file(syms, std::path::PathBuf::new(), file, Vec::new());
+            }
+            Ast::Dir(dir) => {
+                let _ = Self::dir(syms, dir);
+            }
+            _ => return Err(Error::new(std::io::ErrorKind::InvalidData, "Expected dir").into()),
+        }
+        Ok(())
+    }
+
     pub fn file(
         syms: &Syms,
         parent: std::path::PathBuf,
@@ -28,10 +41,10 @@ impl Excecutor {
     }
 
     pub fn dir(syms: &Syms, dir: Dir) -> Result<(), ExecErr> {
-        let path = std::path::Path::new(&dir.name);
+        let path = std::path::Path::new(&dir.path);
         println!("Path: {:?}", path);
         if !path.exists() {
-            let _ = std::fs::create_dir_all(&dir.name);
+            let _ = std::fs::create_dir_all(&dir.path);
         }
         if path.is_file() {
             return Err(Error::new(std::io::ErrorKind::AlreadyExists, "Path is a file").into());
@@ -39,12 +52,13 @@ impl Excecutor {
         for child in dir.children {
             match child {
                 Ast::File(file) => {
-                    let _ = Self::file(syms, dir.name.clone(), file.clone(), Vec::new());
+                    let _ = Self::file(syms, dir.path.clone(), file.clone(), Vec::new());
                 }
                 Ast::Ref(Ref {
                     kind: AstKind::File,
                     name,
                     args,
+                    ..
                 }) => {
                     let sym = syms.get(&Key(name.clone(), Scope::Global));
                     if let None = sym {
@@ -52,7 +66,7 @@ impl Excecutor {
                     }
                     let sym = sym.unwrap();
                     if let Ast::File(file) = &sym.val {
-                        let _ = Self::file(syms, dir.name.clone(), file.clone(), args);
+                        let _ = Self::file(syms, dir.path.clone(), file.clone(), args);
                     } else {
                         return Err(ExecErr::InvalidType(
                             sym.kind.to_string(),
@@ -61,7 +75,7 @@ impl Excecutor {
                     }
                 }
                 Ast::Dir(mut subdir) => {
-                    subdir.name = dir.name.join(subdir.name);
+                    subdir.path = dir.path.join(subdir.path);
                     let _ = Self::dir(&syms, subdir.clone());
                 }
                 Ast::Ref(Ref {
@@ -75,7 +89,7 @@ impl Excecutor {
                     }
                     let sym = sym.cloned().unwrap();
                     if let Ast::Dir(mut subdir) = sym.val {
-                        subdir.name = dir.name.join(subdir.name);
+                        subdir.path = dir.path.join(subdir.path);
                         let _ = Self::dir(&syms, subdir.clone());
                     } else {
                         return Err(ExecErr::InvalidType(
@@ -97,7 +111,7 @@ impl Excecutor {
     ) -> Result<String, ExecErr> {
         let mut buf = String::new();
         match expr {
-            Expr::Lit(Lit::String(lit)) => buf.push_str(&lit),
+            Expr::Lit(lit) => buf.push_str(&lit),
             Expr::Ref(re) => {
                 let sym = if let Some(sym) = syms.get(&Key(re.name.clone(), Scope::Global)) {
                     sym
@@ -124,13 +138,6 @@ impl Excecutor {
                             return Err(ExecErr::InvalidType(re.name, re.kind.to_string()));
                         }
                     }
-                    // AstKind::Lit => {
-                    //     if let Ast::Lit(Lit::String(lit)) = sym.val.clone() {
-                    //         buf.push_str(&lit);
-                    //     } else {
-                    //         return Err(ExecErr::InvalidType(re.name, re.kind.to_string()));
-                    //     }
-                    // }
                     AstKind::Let => {
                         if let Ast::Let(Let { expr, .. }) = sym.val.clone() {
                             buf.push_str(&Self::stringify_vec(syms, expr, scope_args)?);
@@ -141,7 +148,6 @@ impl Excecutor {
                     _ => return Err(ExecErr::InvalidType(re.name, re.kind.to_string())),
                 }
             }
-            _ => return Err(ExecErr::InvalidType("".to_string(), "".to_string())),
         }
         Ok(buf)
     }
@@ -163,6 +169,7 @@ impl Excecutor {
 pub struct Syms {
     pub args: Vec<(String, String)>,
     pub symbols: HashMap<Key, Sym>,
+    pub main: Option<Sym>,
 }
 
 impl Syms {
@@ -170,15 +177,42 @@ impl Syms {
         Syms {
             args,
             symbols: HashMap::new(),
+            main: None,
         }
     }
 
     pub fn add(&mut self, sym: Sym) -> Result<(), ExecErr> {
         let key = Key(sym.name.to_owned(), sym.scope.to_owned());
+        if sym.main {
+            if self.main.is_some() {
+                return Err(ExecErr::MultipleMain);
+            }
+            self.main = Some(sym.clone());
+        }
+
         if self.symbols.contains_key(&key) {
             return Err(ExecErr::AlreadyExists(sym.name));
         }
         self.symbols.insert(key, sym);
+        Ok(())
+    }
+
+    pub fn add_ast(&mut self, ast: Ast) -> Result<(), ExecErr> {
+        self.add(Sym {
+            main: ast.main(),
+            name: ast.alias().or(ast.name()).unwrap(),
+            ty: ast.ty(),
+            kind: ast.kind(),
+            scope: Scope::Global,
+            reqs: Vec::new(),
+            val: ast,
+        })
+    }
+
+    pub fn add_all_ast(&mut self, asts: Vec<Ast>) -> Result<(), ExecErr> {
+        for ast in asts.into_iter() {
+            self.add_ast(ast)?;
+        }
         Ok(())
     }
 
@@ -189,6 +223,10 @@ impl Syms {
     pub fn has(&self, key: &Key) -> bool {
         self.symbols.get(key).is_some()
     }
+
+    pub fn main(&self) -> Option<Ast> {
+        self.main.clone().map(|sym| sym.val)
+    }
 }
 
 #[derive(PartialEq, Eq, Hash, Debug)]
@@ -196,6 +234,7 @@ pub struct Key(pub String, pub Scope);
 
 #[derive(Debug, Clone)]
 pub struct Sym {
+    pub main: bool,
     pub name: String,
     pub ty: Ty,
     pub kind: AstKind,

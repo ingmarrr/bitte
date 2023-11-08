@@ -1,0 +1,18 @@
+let content = "# Todays topic
+
+## Slavery .. 🫵";
+
+dir foo {
+    hello {
+        "world.txt": "# Hello World"
+    }
+}
+
+
+main dir hello {
+    @foo,
+    src {
+        "main.rs": content
+    },
+    "Cargo.toml"
+}

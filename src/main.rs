@@ -1,4 +1,5 @@
 use clap::Parser;
+use tipis::local::Local;
 
 #[derive(clap::Parser)]
 struct App {
@@ -19,19 +20,44 @@ pub struct Verbosity {
 #[derive(clap::Subcommand)]
 enum Cmd {
     #[clap(name = "init", alias = "i", about = "Initialize a new project")]
-    Init,
-    #[clap(name = "repl", alias = "r", about = "Start the repl")]
-    Repl,
-    #[clap(name = "clone", alias = "c", about = "Clone a template")]
-    Clone {
-        #[clap(short, long)]
-        url: String,
+    Init {
+        #[clap(value_parser)]
+        name: Option<String>,
 
         #[clap(short, long)]
+        publish: bool,
+    },
+    #[clap(name = "repl", alias = "r", about = "Start the repl")]
+    Repl,
+    #[clap(name = "make", alias = "m", about = "Clone a template")]
+    Make {
+        #[clap(value_parser)]
         name: String,
 
         #[clap(short, long, num_args(0..))]
-        input: Vec<String>,
+        args: Vec<String>,
+    },
+    #[clap(name = "pub", alias = "p", about = "Publish a template")]
+    Pub {
+        #[clap(value_parser)]
+        path: String,
+
+        #[clap(short, long)]
+        name: Option<String>,
+
+        #[clap(short, long)]
+        local: bool,
+
+        #[clap(short, long)]
+        force: bool,
+    },
+    Check {
+        #[clap(value_parser)]
+        path: String,
+    },
+    Drop {
+        #[clap(value_parser)]
+        name: String,
     },
 }
 
@@ -39,39 +65,46 @@ fn main() -> std::io::Result<()> {
     let app = App::parse();
 
     match app.cmd {
-        Cmd::Init => {}
+        Cmd::Init { name, publish } => {
+            tipis::init(name, publish, true, false);
+        }
         Cmd::Repl => {
             tipis::repl();
         }
-        Cmd::Clone { name, input, .. } => {
-            println!("{:?}", input);
-            // let tp = include_str!("../templates/rs_bin.ti");
-            println!("{:?}", std::env::current_dir()?);
-            let p = format!("templates/{}.ti", name);
-            let path = std::path::Path::new(&p);
-            if !path.exists() {
-                println!("{}", p);
-                tipis::log!(tipis::log::Level::ERROR, "Template doesnt exists");
+        Cmd::Make { name, args } => {
+            let program_args = tipis::args(args);
+            if let None = program_args {
+                println!("Error: Invalid arguments");
                 return Ok(());
             }
-
-            // let tp = std::fs::read_to_string(p)?;
-
-            // let lx = tipis::lexer::Lexer::new(&tp.as_bytes());
-            // let mut par = tipis::parsee::Parser::new(lx);
-            // let mut syn = tipis::syntax::Syntax::new(&tp.as_bytes());
-            // let decls = match par.parse() {
-            //     Ok(decls) => decls,
-            //     Err(e) => {
-            //         tipis::log!(tipis::log::Level::ERROR, "{}", e);
-            //         return Ok(());
-            //     }
-            // };
-            // let mut analyzer = tipis::sem::Analyzer::new();
-            // let _ = analyzer.analyze_all(decls);
-            // let exec = tipis::exec::Exec::new(name, input, analyzer);
-            // println!("{:#?}", exec.args);
-            // println!("{:#?}", analyzer);
+            tipis::make(name, program_args.unwrap());
+        }
+        Cmd::Pub {
+            name, path, force, ..
+        } => {
+            let local = true;
+            if !tipis::return_check(path.clone()) {
+                println!("Error: Invalid template");
+                return Ok(());
+            }
+            tipis::publish(name, path, local, force);
+        }
+        Cmd::Check { path } => {
+            tipis::check(path);
+        }
+        Cmd::Drop { name } => {
+            // tipis::drop(name);
+            let local = Local::new();
+            if let Err(err) = local {
+                println!("Sqlite Error: {}", err);
+                return Ok(());
+            }
+            let local = local.unwrap();
+            let res = local.del(&name);
+            if let Err(err) = res {
+                println!("Sqlite Error: {}", err);
+                return Ok(());
+            }
         }
     };
 

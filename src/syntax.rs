@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Ast, AstKind, Dir, Expr, File, Let, Lit, Ref, Ty},
+    ast::{Ast, AstKind, Dir, Expr, File, Let, Ref, Req, Ty},
     err::{SynErr, Trace},
     lexer::Lexer,
     stack::Stack,
@@ -45,9 +45,30 @@ impl<'a> Syntax<'a> {
     pub fn parse(&mut self) -> Result<Ast, Trace<'a, SynErr>> {
         let tok = self.take()?;
         match tok.kind {
-            TokKind::Keyword(Keyword::Dir) => Ok(Ast::Dir(self.parse_dir_lit()?)),
-            TokKind::Keyword(Keyword::Let) => Ok(Ast::Let(self.parse_let()?)),
-            TokKind::Keyword(Keyword::File) => Ok(Ast::File(self.parse_file_lit()?)),
+            TokKind::Keyword(Keyword::Main) => match self.assert_union(&[
+                TokKind::Keyword(Keyword::File),
+                TokKind::Keyword(Keyword::Dir),
+                TokKind::Keyword(Keyword::Let),
+            ])? {
+                Token {
+                    kind: TokKind::Keyword(Keyword::File),
+                    ..
+                } => Ok(Ast::File(self.parse_file_lit(true)?)),
+                Token {
+                    kind: TokKind::Keyword(Keyword::Dir),
+                    ..
+                } => Ok(Ast::Dir(self.parse_dir_lit(true)?)),
+                Token {
+                    kind: TokKind::Keyword(Keyword::Let),
+                    ..
+                } => Ok(Ast::Let(self.parse_let(true)?)),
+                _ => unreachable!(),
+            },
+            TokKind::Keyword(Keyword::Dir) => Ok(Ast::Dir(self.parse_dir_lit(false)?)),
+            TokKind::Keyword(Keyword::Let) => Ok(Ast::Let(self.parse_let(false)?)),
+            TokKind::Keyword(Keyword::File) => Ok(Ast::File(self.parse_file_lit(false)?)),
+            TokKind::Keyword(Keyword::Req) => Ok(Ast::Ref(self.parse_req()?)),
+
             _ => Err(Trace::new(
                 self.lx.look_ahead()?.src,
                 SynErr::Expected(
@@ -59,7 +80,7 @@ impl<'a> Syntax<'a> {
         }
     }
 
-    pub fn parse_dir_lit(&mut self) -> Result<Dir, Trace<'a, SynErr>> {
+    pub fn parse_dir_lit(&mut self, main: bool) -> Result<Dir, Trace<'a, SynErr>> {
         let (ident, mut path) =
             match self.assert_union(&[TokKind::Opener(Opener::DQuote), TokKind::Ident])? {
                 Token {
@@ -108,7 +129,8 @@ impl<'a> Syntax<'a> {
         };
 
         let di = Dir {
-            name: std::path::PathBuf::from(path.unwrap()),
+            main,
+            path: std::path::PathBuf::from(path.unwrap()),
             alias: ident,
             params,
             children: self.parse_children()?,
@@ -132,10 +154,13 @@ impl<'a> Syntax<'a> {
             TokKind::Symbol(Symbol::Pound),
             TokKind::Symbol(Symbol::At),
             TokKind::Symbol(Symbol::Bang),
+            TokKind::Symbol(Symbol::Comma),
             TokKind::Opener(Opener::DQuote),
             TokKind::Ident,
         ]) {
+            println!("TOK: {:?}", tok);
             match tok.kind {
+                TokKind::Symbol(Symbol::Comma) => {}
                 TokKind::Symbol(Symbol::Pound)
                 | TokKind::Symbol(Symbol::Bang)
                 | TokKind::Symbol(Symbol::At) => {
@@ -143,47 +168,63 @@ impl<'a> Syntax<'a> {
                         name: self.assert(TokKind::Ident)?.val.unwrap().to_owned(),
                         kind: tok.kind.symbol_to_ast_kind().unwrap(),
                         args: self.parse_args()?,
+                        ty: Ty::Unknown,
                     }));
-                    if let Ok(_) = self.consume_if(TokKind::Closer(Closer::RCurly)) {
-                        break;
-                    }
-                    self.assert(TokKind::Symbol(Symbol::Comma))?;
+                    self.assert_union(&[
+                        TokKind::Symbol(Symbol::Comma),
+                        TokKind::Closer(Closer::RCurly),
+                    ])?;
+                    // if let Ok(_) = self.consume_if(TokKind::Closer(Closer::RCurly)) {
+                    //     break;
+                    // }
                 }
                 TokKind::Opener(Opener::DQuote) => {
                     let name = self.assert(TokKind::Literal(Literal::String))?.val.unwrap();
                     let _ = self.assert(TokKind::Closer(Closer::DQuote))?;
                     if let Ok(_) = self.consume_if(TokKind::Symbol(Symbol::Colon)) {
+                        let content = if let Ok(ident) = self.consume_if(TokKind::Ident) {
+                            vec![Expr::Ref(Ref {
+                                name: ident.val.unwrap().to_owned(),
+                                kind: AstKind::Let,
+                                args: self.parse_args()?,
+                                ty: Ty::String,
+                            })]
+                        } else {
+                            self.parse_string()?
+                        };
                         children.push(Ast::File(File {
+                            main: false,
                             params: Vec::new(),
                             name: name.to_owned(),
                             alias: name.to_owned(),
-                            content: self.parse_string()?,
+                            content,
                         }))
                     } else {
                         children.push(Ast::File(File {
+                            main: false,
                             params: Vec::new(),
                             name: name.to_owned(),
                             alias: name.to_owned(),
                             content: Vec::new(),
                         }))
                     }
-                    if let Ok(_) = self.consume_if(TokKind::Closer(Closer::RCurly)) {
-                        break;
-                    }
+                    self.assert_union(&[
+                        TokKind::Symbol(Symbol::Comma),
+                        TokKind::Closer(Closer::RCurly),
+                    ])?;
                 }
                 TokKind::Ident => {
+                    println!("IDENT: {:?}", tok);
                     if let TokKind::Opener(Opener::LCurly) = self.look_ahead_one()?.kind {
                         children.push(Ast::Dir(Dir {
+                            main: false,
                             params: Vec::new(),
-                            name: tok.val.unwrap().to_owned().into(),
+                            path: tok.val.unwrap().to_owned().into(),
                             alias: tok.val.unwrap().to_owned(),
                             children: self.parse_children()?,
                         }));
-                        self.assert_union(&[
-                            TokKind::Symbol(Symbol::Comma),
-                            TokKind::Closer(Closer::RCurly),
-                        ])?;
-                        // continue;
+                        let _ = self.consume_if_union(&[TokKind::Closer(Closer::RCurly)]);
+                        continue;
                     }
 
                     let next = self.assert_union(&[
@@ -195,8 +236,9 @@ impl<'a> Syntax<'a> {
                     match next.kind {
                         TokKind::Symbol(Symbol::Comma) => {
                             children.push(Ast::Dir(Dir {
+                                main: false,
                                 params: Vec::new(),
-                                name: tok.val.unwrap().to_owned().into(),
+                                path: tok.val.unwrap().to_owned().into(),
                                 alias: tok.val.unwrap().to_owned(),
                                 children: self.parse_children()?,
                             }));
@@ -208,6 +250,7 @@ impl<'a> Syntax<'a> {
                             } = self.look_ahead_one()?
                             {
                                 children.push(Ast::File(File {
+                                    main: false,
                                     params: Vec::new(),
                                     name: tok.val.unwrap().to_owned(),
                                     alias: tok.val.unwrap().to_owned(),
@@ -215,15 +258,18 @@ impl<'a> Syntax<'a> {
                                         name: self.assert(TokKind::Ident)?.val.unwrap().to_owned(),
                                         kind: AstKind::Let,
                                         args: self.parse_args()?,
+                                        ty: Ty::String,
                                     })],
                                 }))
+                            } else {
+                                children.push(Ast::File(File {
+                                    main: false,
+                                    params: Vec::new(),
+                                    name: tok.val.unwrap().to_owned(),
+                                    alias: tok.val.unwrap().to_owned(),
+                                    content: self.parse_string()?,
+                                }))
                             }
-                            children.push(Ast::File(File {
-                                params: Vec::new(),
-                                name: tok.val.unwrap().to_owned(),
-                                alias: tok.val.unwrap().to_owned(),
-                                content: self.parse_string()?,
-                            }))
                         }
                         TokKind::Closer(Closer::RCurly) => {
                             break;
@@ -238,136 +284,7 @@ impl<'a> Syntax<'a> {
         Ok(children)
     }
 
-    // #[rustfmt::skip]
-    // pub fn parse_dir_lit(&mut self) -> Result<Dir, Trace<'a, SynErr>> {
-    //     let name = self.assert(TokKind::Ident)?;
-
-    //     let mut tok = self.assert_union(&[
-    //         TokKind::Opener(Opener::LParen),
-    //         TokKind::Opener(Opener::LCurly),
-    //         TokKind::Symbol(Symbol::Semi),
-    //         TokKind::Symbol(Symbol::Colon),
-    //     ])?;
-
-    //     let params = self.parse_params()?;
-    //     if params.len() > 0 {
-    //         tok = self.assert_union(&[
-    //             TokKind::Opener(Opener::LCurly),
-    //             TokKind::Symbol(Symbol::Semi),
-    //         ])?;
-    //     }
-
-    //     let alias = if let TokKind::Symbol(Symbol::Colon) = tok.kind {
-    //         let alias = self.assert(TokKind::Ident)?;
-    //         tok = self.assert_union(&[
-    //             TokKind::Opener(Opener::LCurly),
-    //             TokKind::Symbol(Symbol::Semi),
-    //         ])?;
-    //         alias.val.unwrap().to_owned()
-    //     } else {
-    //         name.val.unwrap().to_owned()
-    //     };
-
-    //     return Ok(Dir {
-    //         params,
-    //         name: std::path::PathBuf::from(name.val.unwrap()),
-    //         children: if tok.kind == TokKind::Symbol(Symbol::Semi) { Vec::new() } else { self.parse_children()? },
-    //         alias,
-    //     });
-    // }
-
-    // #[rustfmt::skip]
-    // pub fn parse_dir(&mut self) -> Result<Dir, Trace<'a, SynErr>> {
-    //     let name = self.assert(TokKind::Ident)?;
-
-    //     let tok = self.assert_union(&[
-    //         TokKind::Opener(Opener::LCurly),
-    //         TokKind::Closer(Closer::RCurly),
-    //         TokKind::Symbol(Symbol::Comma),
-    //     ])?;
-
-    //     if let TokKind::Opener(Opener::LCurly) = tok.kind {
-    //         return Ok(Dir {
-    //             params: Vec::new(),
-    //             name: std::path::PathBuf::from(name.val.unwrap()),
-    //             children: self.parse_children()?,
-    //             alias: name.val.unwrap().to_owned()
-    //         });
-    //     }
-
-    //     return Ok(Dir {
-    //         params: Vec::new(),
-    //         name: std::path::PathBuf::from(name.val.unwrap()),
-    //         children: Vec::new(),
-    //         alias: name.val.unwrap().to_owned()
-    //     });
-    // }
-
-    // #[rustfmt::skip]
-    // pub fn parse_children(&mut self) -> Result<Vec<Ast>, Trace<'a, SynErr>> {
-    //     let mut children = Vec::new();
-    //     loop {
-    //         let next = self.look_ahead()?;
-    //         match next.kind {
-    //             TokKind::EOF | TokKind::Closer(Closer::RCurly) => {
-    //                 let _ = self.take();
-    //                 return Ok(children);
-    //             }
-    //             TokKind::Ident => match self.look_ahead()?.kind {
-    //                 TokKind::Symbol(Symbol::Colon)
-    //                 | TokKind::Symbol(Symbol::Dot) => children.push(Ast::File(self.parse_file_lit()?)),
-    //                 TokKind::Opener(Opener::LCurly)
-    //                 | TokKind::Symbol(Symbol::Comma) => children.push(Ast::Dir(self.parse_dir()?)),
-    //                 TokKind::Closer(Closer::RCurly) => {
-    //                     let name = self.take()?;
-    //                     children.push(Ast::Dir(Dir {
-    //                         params: Vec::new(),
-    //                         name: std::path::PathBuf::from(name.val.unwrap()),
-    //                         children: Vec::new(),
-    //                         alias: name.val.unwrap().to_owned(),
-    //                     }));
-    //                     return Ok(children);
-    //                 }
-    //                 ki => {
-    //                     println!("Unexpected token: {}", ki);
-    //                     return Err(Trace::new_syn(next, "`:`, `.` for file or `{`, `}`, `,` for directory definition"));
-    //                 }
-    //             },
-    //             TokKind::Symbol(Symbol::At) => {
-    //                 self.take()?;
-    //                 let finame = self.parse_file_ref()?;
-    //                 let args = self.parse_args()?;
-    //                 let _ = self.assert_union(&[
-    //                     TokKind::Symbol(Symbol::Comma),
-    //                     TokKind::Closer(Closer::RCurly),
-    //                 ]);
-    //                 children.push(Ast::Ref(Ref {
-    //                     kind: AstKind::File,
-    //                     name: finame,
-    //                     args,
-    //             }));
-    //             }
-    //             TokKind::Symbol(Symbol::Dollar) => {
-    //                 self.take()?;
-    //                 let dirname = self.assert(TokKind::Ident)?.val.unwrap().to_owned();
-    //                 let args = self.parse_args()?;
-    //                 let _ = self.assert_union(&[
-    //                     TokKind::Symbol(Symbol::Comma),
-    //                     TokKind::Closer(Closer::RCurly),
-    //                 ]);
-    //                 children.push(Ast::Ref(Ref {
-    //                     kind: AstKind::Dir,
-    //                     name: dirname,
-    //                     args,
-    //             }));
-    //             }
-    //             _ => return Err(Trace::new_syn(next, "struct- or file name")),
-
-    //         }
-    //     }
-    // }
-
-    pub fn parse_file_lit(&mut self) -> Result<File, Trace<'a, SynErr>> {
+    pub fn parse_file_lit(&mut self, main: bool) -> Result<File, Trace<'a, SynErr>> {
         let (ident, mut path) =
             match self.assert_union(&[TokKind::Opener(Opener::DQuote), TokKind::Ident])? {
                 Token {
@@ -412,6 +329,7 @@ impl<'a> Syntax<'a> {
         };
 
         let fi = File {
+            main,
             name: path.unwrap(),
             alias: ident,
             content: self.parse_string()?,
@@ -428,7 +346,7 @@ impl<'a> Syntax<'a> {
         Ok(fi)
     }
 
-    pub fn parse_let(&mut self) -> Result<Let, Trace<'a, SynErr>> {
+    pub fn parse_let(&mut self, main: bool) -> Result<Let, Trace<'a, SynErr>> {
         let name = self.assert(TokKind::Ident)?;
         let params = self.parse_params()?;
         let _ = self.assert(TokKind::Symbol(Symbol::Equal))?;
@@ -436,10 +354,25 @@ impl<'a> Syntax<'a> {
         let _ = self.assert_union(&[TokKind::Symbol(Symbol::Semi), TokKind::EOF])?;
 
         Ok(Let {
+            main,
             name: name.val.unwrap().to_owned(),
             params,
-            ty: Ty::Str,
+            ty: Ty::String,
             expr,
+        })
+    }
+
+    pub fn parse_req(&mut self) -> Result<Ref, Trace<'a, SynErr>> {
+        let name = self.assert(TokKind::Ident)?;
+        let _ = self.assert(TokKind::Symbol(Symbol::Colon))?;
+        let ty: Ty = self.assert(TokKind::Ident)?.val.unwrap().into();
+        let _ = self.assert(TokKind::Symbol(Symbol::Semi))?;
+
+        Ok(Ref {
+            name: name.val.unwrap().to_owned(),
+            kind: AstKind::Req,
+            args: vec![],
+            ty,
         })
     }
 
@@ -491,6 +424,7 @@ impl<'a> Syntax<'a> {
                                         kind: AstKind::Let,
                                         name: arg_val.val.unwrap().to_owned(),
                                         args: arg_args,
+                                        ty: Ty::String,
                                     }),
                                 ));
                             }
@@ -499,15 +433,9 @@ impl<'a> Syntax<'a> {
                                 let _ = self.assert(TokKind::Closer(Closer::DQuote));
                                 args.push((
                                     tok.val.unwrap().to_owned(),
-                                    Expr::Lit(Lit::String(arg_string.val.unwrap().to_owned())),
+                                    Expr::Lit(arg_string.val.unwrap().to_owned()),
                                 ));
                             }
-                            // TokKind::Literal(Literal::String) => {
-                            //     args.push((
-                            //         tok.val.unwrap().to_owned(),
-                            //         Expr::Lit(Lit::String(arg_val.val.unwrap().to_owned())),
-                            //     ));
-                            // }
                             _ => unreachable!(),
                         }
                     }
@@ -532,7 +460,6 @@ impl<'a> Syntax<'a> {
             TokKind::Closer(Closer::RCurlyDollar),
             TokKind::Closer(Closer::DQuote),
         ]) {
-            println!("KIND: {}", tok.kind);
             match tok.kind {
                 TokKind::Opener(Opener::LCurlyDollar) => {
                     let ident = self.assert(TokKind::Ident)?;
@@ -542,38 +469,46 @@ impl<'a> Syntax<'a> {
                         kind: AstKind::Let,
                         name: ident.val.unwrap().to_owned(),
                         args,
+                        ty: Ty::String,
                     }));
                 }
                 TokKind::Opener(Opener::LCurlyDQuote) | TokKind::Opener(Opener::DQuote) => {
                     let string = self.assert(TokKind::Literal(Literal::String))?;
                     openers.push(tok.try_into().unwrap());
-                    buf.push(Expr::Lit(Lit::String(string.val.unwrap().to_owned())));
+                    buf.push(Expr::Lit(string.val.unwrap().to_owned()));
                 }
                 TokKind::Closer(Closer::RCurlyDollar) => {
                     if let Ok(op) = openers.peek() {
-                        if op.closer() == tok.try_into().unwrap() {
+                        if op.closer() == Closer::RCurlyDollar {
                             let _ = openers.pop();
-                            if let Ok(tok) = self.consume_if(TokKind::Literal(Literal::String)) {
-                                buf.push(Expr::Lit(Lit::String(tok.val.unwrap().to_owned())));
+                            if let Ok(Opener::LCurlyDQuote) = openers.peek() {
+                                let string = self.lx.try_lx_str()?;
+                                buf.push(Expr::Lit(string.val.unwrap().to_owned()));
                             }
                         } else {
-                            return Err(Trace::new_syn(tok, "unmatched closer"));
+                            return Err(Trace::new_syn(tok, "unmatched opener: {{\""));
                         }
                     } else {
-                        return Err(Trace::new_syn(tok, "unmatched closer"));
+                        return Err(Trace::new_syn(tok, "unmatched closer: $}"));
                     }
                 }
                 TokKind::Closer(Closer::RCurlyDQuote) | TokKind::Closer(Closer::DQuote) => {
                     if let Ok(op) = openers.peek() {
-                        println!("OP:     {:?}", op);
-                        println!("CLOSER: {:?}", Closer::try_from(tok));
+                        // println!("OP:     {:?}", op);
+                        // println!("CLOSER: {:?}", Closer::try_from(tok));
                         if op.closer() == tok.try_into().unwrap() {
                             let _ = openers.pop();
                         } else {
-                            return Err(Trace::new_syn(tok, "unmatched closer"));
+                            return Err(Trace::new_syn(
+                                tok,
+                                &("unmatched closer".to_owned() + &op.to_string()),
+                            ));
                         }
                     } else {
-                        return Err(Trace::new_syn(tok, "unmatched closer"));
+                        return Err(Trace::new_syn(
+                            tok,
+                            &("unmatched closer".to_owned() + &tok.to_string()),
+                        ));
                     }
                 }
                 _ => unreachable!(),
@@ -695,6 +630,7 @@ impl<'a> Syntax<'a> {
 
 #[cfg(test)]
 mod test {
+    use crate::ast::Ty;
 
     macro_rules! file_test {
         ($fn_name:ident, $src:expr, $name:expr, $alias:expr, $params:expr, $content:expr) => {
@@ -744,9 +680,7 @@ mod test {
         "test.txt",
         "test",
         Vec::new(),
-        vec![crate::ast::Expr::Lit(crate::ast::Lit::String(
-            "hello world".into()
-        ))]
+        vec![crate::ast::Expr::Lit("hello world".into())]
     );
     file_test!(
         test_file_raw,
@@ -754,9 +688,7 @@ mod test {
         "test.txt",
         "test",
         Vec::new(),
-        vec![crate::ast::Expr::Lit(crate::ast::Lit::String(
-            "hello world".into()
-        ))]
+        vec![crate::ast::Expr::Lit("hello world".into())]
     );
     file_test!(
         test_file_alias,
@@ -764,9 +696,7 @@ mod test {
         "test.txt",
         "test",
         Vec::new(),
-        vec![crate::ast::Expr::Lit(crate::ast::Lit::String(
-            "hello world".into()
-        ))]
+        vec![crate::ast::Expr::Lit("hello world".into())]
     );
     file_test!(
         test_file_alias_raw,
@@ -774,9 +704,7 @@ mod test {
         "test.txt",
         "test",
         Vec::new(),
-        vec![crate::ast::Expr::Lit(crate::ast::Lit::String(
-            "hello world".into()
-        ))]
+        vec![crate::ast::Expr::Lit("hello world".into())]
     );
 
     file_test!(
@@ -784,14 +712,16 @@ mod test {
         r#"file foo(bar: str): "voo.a" {"Hello {$bar$}"};"#,
         "voo.a",
         "foo",
-        vec![("bar".into(), crate::ast::Ty::Str)],
+        vec![("bar".into(), crate::ast::Ty::String)],
         vec![
-            crate::ast::Expr::Lit(crate::ast::Lit::String("Hello ".into())),
+            crate::ast::Expr::Lit("Hello ".into()),
             crate::ast::Expr::Ref(crate::ast::Ref {
                 kind: crate::ast::AstKind::Let,
                 name: "bar".into(),
                 args: Vec::new(),
-            })
+                ty: Ty::String,
+            }),
+            crate::ast::Expr::Lit("".into()),
         ]
     );
 
@@ -800,11 +730,12 @@ mod test {
         r#"file foo(bar: str): "voo.a" {$bar$};"#,
         "voo.a",
         "foo",
-        vec![("bar".into(), crate::ast::Ty::Str)],
+        vec![("bar".into(), crate::ast::Ty::String)],
         vec![crate::ast::Expr::Ref(crate::ast::Ref {
             kind: crate::ast::AstKind::Let,
             name: "bar".into(),
             args: Vec::new(),
+            ty: Ty::String,
         })]
     );
 
@@ -813,11 +744,12 @@ mod test {
         r#"file "$foo.a"(bar: str) {$bar$};"#,
         "$foo.a",
         "$foo.a",
-        vec![("bar".into(), crate::ast::Ty::Str)],
+        vec![("bar".into(), crate::ast::Ty::String)],
         vec![crate::ast::Expr::Ref(crate::ast::Ref {
             kind: crate::ast::AstKind::Let,
             name: "bar".into(),
             args: Vec::new(),
+            ty: Ty::String,
         })]
     );
 
@@ -849,5 +781,17 @@ mod test {
         //         })]
         //     );
         // }
+    }
+
+    #[test]
+    fn test_dir_name_ref() {
+        let src = r#"
+            let name = "hello";
+            dir bar: @name { #foo }
+        "#;
+
+        println!("TEST: {}", src);
+        let mut syn = crate::syntax::Syntax::new(src.as_bytes());
+        let ast = syn.parse_all().expect("Failed to parse");
     }
 }

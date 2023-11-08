@@ -5,7 +5,7 @@ use crate::token::{Closer, Literal, Opener, Source, TokKind, Token};
 
 #[cfg_attr(test, derive(PartialEq))]
 #[derive(Debug, Clone)]
-pub struct Pos<'a> {
+pub struct Cx<'a> {
     pub ix: usize,
     pub line: usize,
     pub col: usize,
@@ -15,15 +15,15 @@ pub struct Pos<'a> {
 
 pub struct Lexer<'a> {
     pub src: &'a [u8],
-    pub cx: Pos<'a>,
-    pub tmpcx: Option<Pos<'a>>,
+    pub cx: Cx<'a>,
+    pub tmpcx: Option<Cx<'a>>,
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(src: &'a [u8]) -> Lexer<'a> {
         Lexer {
             src,
-            cx: Pos {
+            cx: Cx {
                 ix: 0,
                 line: 0,
                 col: 0,
@@ -85,6 +85,26 @@ impl<'a> Lexer<'a> {
         };
         println!("Nexttoken: {}", tok);
         Ok(tok)
+    }
+
+    pub fn try_lx_str(&mut self) -> Result<Token<'a>, Trace<'a, LxErr>> {
+        if let None = self.tmpcx {
+            self.tmpcx = Some(self.cx.to_owned());
+        }
+        if self.cx.pending.has_some() {
+            if let Ok(tok) = self.cx.pending.peek() {
+                if let TokKind::Literal(Literal::String) = tok.kind {
+                    return Ok(self.cx.pending.pop_sure());
+                }
+            }
+        }
+        let tok = self.lx_str(false)?;
+        if let TokKind::Literal(Literal::String) = tok.kind {
+            Ok(tok)
+        } else {
+            self.reset();
+            Err(self.err(LxErrKind::InvalidToken, self.cx.ix))
+        }
     }
 
     pub fn reset(&mut self) {
@@ -164,14 +184,11 @@ impl<'a> Lexer<'a> {
                 Some(b'}') => {
                     self.take();
                     self.take();
-                    let tok = Token {
+                    Token {
                         src: self.src(&self.src[self.cx.ix - 2..self.cx.ix]),
                         val: None,
                         kind: TokKind::Closer(Closer::RCurlyDollar),
-                    };
-                    let st = self.lx_str(false)?;
-                    self.cx.pending.push(st);
-                    tok
+                    }
                 }
                 Some(ch) => {
                     self.take();
@@ -319,7 +336,7 @@ impl<'a> Lexer<'a> {
     //     let res = self.peek();
     //     println!("{:#?}", res.unwrap_or(b'?') as char);
     //     res.ok_or(self.err(kind, self.pos.ix))
-    //     // self.peek().ok_or(self.err(kind, self.pos.ix))
+    //     self.peek().ok_or(self.err(kind, self.pos.ix))
     // }
 
     fn err(&self, kind: LxErrKind, six: usize) -> Trace<'a, LxErr> {
@@ -340,7 +357,7 @@ impl<'a> Lexer<'a> {
     fn src(&self, buf: &'a [u8]) -> Source<'a> {
         Source {
             bix: self.cx.ix - buf.len(),
-            col: self.cx.col - buf.len(),
+            col: self.cx.col,
             line: self.cx.line,
             src: &buf,
             len: buf.len(),

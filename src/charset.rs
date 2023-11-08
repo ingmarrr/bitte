@@ -14,16 +14,6 @@ pub fn is_ws(c: u8) -> bool {
 }
 
 #[inline]
-pub fn is_alpha_str(st: &str) -> bool {
-    for ch in st.chars() {
-        if !ch.is_alphabetic() {
-            return false;
-        }
-    }
-    true
-}
-
-#[inline]
 pub fn is_ident(st: &str) -> bool {
     let mut chars = st.chars();
     if let Some(ch) = chars.next() {

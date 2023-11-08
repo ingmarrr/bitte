@@ -158,6 +158,7 @@ impl From<u8> for TokKind {
 impl From<&str> for TokKind {
     fn from(kind: &str) -> TokKind {
         match kind {
+            "main" => TokKind::Keyword(Keyword::Main),
             "let" => TokKind::Keyword(Keyword::Let),
             "dir" => TokKind::Keyword(Keyword::Dir),
             "file" => TokKind::Keyword(Keyword::File),
@@ -197,6 +198,7 @@ impl From<&str> for TokKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Keyword {
+    Main,
     Let,
     Dir,
     File,
@@ -212,6 +214,7 @@ pub enum Keyword {
 impl std::fmt::Display for Keyword {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Keyword::Main => write!(f, "Main"),
             Keyword::Let => write!(f, "Let"),
             Keyword::Dir => write!(f, "Directory"),
             Keyword::File => write!(f, "File"),
@@ -231,6 +234,7 @@ impl TryFrom<&str> for Keyword {
 
     fn try_from(kind: &str) -> Result<Keyword, Self::Error> {
         match kind {
+            "main" => Ok(Keyword::Main),
             "let" => Ok(Keyword::Let),
             "dir" => Ok(Keyword::Dir),
             "file" => Ok(Keyword::File),
