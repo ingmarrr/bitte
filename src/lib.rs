@@ -1,22 +1,16 @@
 extern crate core;
 
-pub mod args;
 pub mod ast;
-pub mod check;
 pub mod consts;
 pub mod err;
 pub mod exec;
 pub mod fifo;
-pub mod init;
-pub mod local;
-pub mod make;
-pub mod publish;
-pub mod repl;
 pub mod stack;
 pub mod syntax;
 pub mod token;
 #[macro_use]
 pub mod log;
+pub mod actions;
 pub mod charset;
 pub mod lexer;
 
@@ -26,17 +20,25 @@ lazy_static::lazy_static! {
     pub static ref LOGGER: Logger = Logger { level: Level::None };
 }
 
-pub use args::args;
-pub use check::check;
-pub use check::return_check;
-pub use init::init;
-pub use make::make;
-pub use publish::publish;
-pub use repl::repl;
+pub use actions::check::check;
+pub use actions::check::return_check;
+pub use actions::init::init;
+pub use actions::make::make;
+pub use actions::publish::publish;
+pub use actions::repl::repl;
 
 pub struct Template {
     pub name: String,
     pub body: String,
 }
 
-//file hey(name: str) {"Hey there, Mr {$name$}"}; dir foo { hello { "world": "# Hello World" }, foo { #hey(name: "bob") } }
+pub fn args(args: Vec<String>) -> Option<Vec<(String, String)>> {
+    let mut res = Vec::new();
+    for arg in args {
+        let mut arg = arg.split('=');
+        let name = arg.next().unwrap().to_string();
+        let val = arg.next().unwrap().to_string();
+        res.push((name, val));
+    }
+    Some(res)
+}

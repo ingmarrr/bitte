@@ -1,5 +1,5 @@
 use clap::Parser;
-use tipis::local::Local;
+use tipis::actions::local::Local;
 
 #[derive(clap::Parser)]
 struct App {

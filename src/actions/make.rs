@@ -1,8 +1,9 @@
 use crate::{
     exec::{self, Syms},
-    local::Local,
     syntax::Syntax,
 };
+
+use super::local::Local;
 
 pub fn make(name: String, args: Vec<(String, String)>) {
     let repo = match Local::new() {

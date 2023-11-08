@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Ast, AstKind, Dir, Expr, File, Let, Ref, Req, Ty},
+    ast::{Ast, AstKind, Dir, Expr, File, Let, Ref, Ty},
     err::{SynErr, Trace},
     lexer::Lexer,
     stack::Stack,

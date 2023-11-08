@@ -1,0 +1,32 @@
+cfg {
+    [indent=4s]
+}
+
+req name: str;
+
+let hw = "Hello, World. :D";
+
+[lang=go]
+let content = {{
+    package main;
+
+    import "fmt"
+
+    func main() {
+        fmt.Println({$ hw $})
+    }
+}}
+
+[lang=html]
+let index_body = {{
+    <h1> {$ hw $} </h1>
+}}
+
+main dir @name {
+    src {
+        "main.go": @go_main,
+    }
+    templates {
+        "index.html": @index_body
+    }
+}

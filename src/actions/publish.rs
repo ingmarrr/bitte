@@ -1,6 +1,8 @@
 use std::path::Path;
 
-use crate::{local::Local, Template};
+use crate::Template;
+
+use super::local::Local;
 
 pub fn publish(name: Option<String>, path: String, local: bool, force: bool) {
     if local {

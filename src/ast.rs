@@ -1,9 +1,3 @@
-// #[derive(Debug, PartialEq)]
-// pub enum Stmt {
-//     Decl(Decl),
-//     Expr(Expr),
-// }
-
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Ty {
     String,
