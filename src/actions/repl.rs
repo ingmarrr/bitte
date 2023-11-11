@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use crate::{
-    ast::{self, Ast, AstKind, Req, Ty},
+    ast::{self, Ast, Req, Ty},
     consts,
     err::ExecErr,
     exec::{Exec, Key, Scope, Sym, Syms},
@@ -10,41 +10,44 @@ use crate::{
 
 pub fn repl() {
     let mut inp = String::new();
+    let mut buf = String::new();
     println!("Tipis Repl");
 
     let mut syms = Syms::new(Vec::new());
 
     loop {
-        // let arrows = "\x1b[36m>>>\x1b[0m";
         let arrows = ">>>";
         print!("{}{}{} ", consts::BLUE, arrows, consts::RESET);
         std::io::stdout().flush().unwrap();
         std::io::stdin().read_line(&mut inp).unwrap();
 
         inp = inp.trim().to_string();
-        println!("{inp}");
+        // println!("{inp}");
 
         match run(&mut syms, &inp) {
-            Res::None | Res::Commit => {}
+            Res::None | Res::Commit => {
+                inp.clear();
+            }
+            Res::Continue => {
+                buf.push_str(&inp);
+                inp.clear();
+                continue;
+            }
             _ => {
+                buf.clear();
                 inp.clear();
                 continue;
             }
         }
 
-        let mut syn = syntax::Syntax::new(&inp.as_bytes());
+        let mut syn = syntax::Syntax::new(&buf.as_bytes());
         let res = syn.parse_all();
         println!("{:#?}", res);
 
         if let Ok(toks) = res {
             for tok in toks.into_iter() {
                 let res = syms.add(Sym {
-                    main: tok.main(),
-                    name: tok.alias().or(tok.name()).unwrap(),
-                    ty: tok.ty(),
-                    kind: tok.kind(),
                     scope: Scope::Global,
-                    reqs: Vec::new(),
                     val: tok.clone(),
                 });
                 if let Err(err) = res {
@@ -52,10 +55,10 @@ pub fn repl() {
                 }
             }
         } else {
-            println!("{}", res.unwrap_err().dump_err(inp.as_bytes()));
+            println!("{}", res.unwrap_err().dump_err(buf.as_bytes()));
         }
 
-        inp.clear();
+        buf.clear();
     }
 }
 
@@ -70,6 +73,9 @@ enum Res {
 }
 
 fn run(syms: &mut Syms, cmd: &str) -> Res {
+    if cmd == "" {
+        return Res::Commit;
+    }
     let parts = cmd.split(' ').collect::<Vec<&str>>();
     if parts.len() == 0 {
         return Res::None;
@@ -99,12 +105,12 @@ fn run(syms: &mut Syms, cmd: &str) -> Res {
                         return Res::InvalidArgs;
                     }
                     let _ = syms.add(Sym {
-                        main: false,
-                        name: arg_parts[0].to_string(),
-                        ty: Ty::String,
-                        kind: AstKind::Lit,
+                        // main: false,
+                        // name: arg_parts[0].to_string(),
+                        // ty: Ty::String,
+                        // kind: AstKind::Lit,
                         scope: Scope::Global,
-                        reqs: Vec::new(),
+                        // reqs: Vec::new(),
                         val: Ast::Req(Req {
                             name: arg_parts[0].to_string(),
                             ty: Ty::String,
@@ -124,7 +130,7 @@ fn run(syms: &mut Syms, cmd: &str) -> Res {
                 Sym {
                     val: ast::Ast::Dir(dir),
                     ..
-                } => Exec::dir(&syms, dir.clone()),
+                } => Exec::dir(&syms, dir.clone(), Vec::new()),
                 Sym {
                     val: ast::Ast::File(file),
                     ..

@@ -1,0 +1,6 @@
+
+req name: str;
+
+main dir project: !name {
+    "index.html": "# Hey 😙",
+}

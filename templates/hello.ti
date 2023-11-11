@@ -1,6 +1,6 @@
-let content = "# Todays topic
+let content = "# Today's topic
 
-## Slavery .. 🫵";
+## Interesting Stuff";
 
 dir foo {
     hello {

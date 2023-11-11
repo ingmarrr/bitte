@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use crate::{
-    ast::{Ast, Dir, Expr, File},
+    ast::{Ast, Dir, Expr, File, Lit},
     err::ExecErr,
 };
 
@@ -21,8 +21,9 @@ pub fn init(name: Option<String>, publish: bool, local: bool, force: bool) {
         return;
     }
 
-    let dir = res.unwrap();
-    let body = Ast::Dir(dir).dump();
+    // let dir = res.unwrap();
+    // let body = Ast::Dir(dir).dump();
+    let body = String::new();
     let fi = match std::fs::File::create(&format!("{}.ti", name)) {
         Ok(fi) => fi,
         Err(err) => {
@@ -83,7 +84,7 @@ fn into_file(path: PathBuf) -> Result<File, ExecErr> {
         main: false,
         params: Vec::new(),
         alias: name.clone(),
-        name,
-        content: vec![Expr::Lit(content)],
+        path: name,
+        content: vec![Expr::Lit(Lit::String(content))],
     })
 }

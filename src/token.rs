@@ -50,7 +50,6 @@ impl<'a> Source<'a> {
 #[derive(Debug, Clone, Copy)]
 pub struct Token<'a> {
     pub src: Source<'a>,
-    pub val: Option<&'a str>,
     pub kind: TokKind,
 }
 
@@ -68,21 +67,25 @@ impl<'a> Token<'a> {
             _ => false,
         }
     }
+
+    pub fn val(&self) -> &'a str {
+        std::str::from_utf8(self.src.src).ok().unwrap()
+    }
+
+    pub fn val_owned(&self) -> String {
+        self.val().to_string()
+    }
 }
 
 impl std::fmt::Display for Token<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(val) = self.val {
-            return write!(
-                f,
-                "`{}` = `{}` :: [{}]",
-                self.kind,
-                val,
-                self.src.to_string()
-            );
-        }
-
-        write!(f, "`{}` :: [{}]", self.kind, self.src.to_string())
+        return write!(
+            f,
+            "`{}` = `{}` :: [{}]",
+            self.kind,
+            self.val(),
+            self.src.to_string()
+        );
     }
 }
 

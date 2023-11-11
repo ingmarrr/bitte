@@ -14,6 +14,8 @@ pub mod actions;
 pub mod charset;
 pub mod lexer;
 
+use ast::Expr;
+use ast::Lit;
 use log::{Level, Logger};
 
 lazy_static::lazy_static! {
@@ -32,12 +34,12 @@ pub struct Template {
     pub body: String,
 }
 
-pub fn args(args: Vec<String>) -> Option<Vec<(String, String)>> {
+pub fn args(args: Vec<String>) -> Option<Vec<(String, Expr)>> {
     let mut res = Vec::new();
     for arg in args {
         let mut arg = arg.split('=');
         let name = arg.next().unwrap().to_string();
-        let val = arg.next().unwrap().to_string();
+        let val = Expr::Lit(Lit::String(arg.next().unwrap().to_string()));
         res.push((name, val));
     }
     Some(res)

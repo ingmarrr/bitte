@@ -1,3 +1,5 @@
+use crate::err::ExecErr;
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Ty {
     String,
@@ -44,20 +46,31 @@ pub enum Ast {
     Lit(String),
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Expr {
-    Ref(Ref),
-    Lit(String),
-}
-
-impl Expr {
-    pub fn dump(&self) -> String {
+impl Ast {
+    pub fn set_main(&mut self) {
         match self {
-            Expr::Ref(r) => r.dump(),
-            Expr::Lit(l) => l.clone(),
+            Ast::Let(l) => l.main = true,
+            Ast::Dir(d) => d.main = true,
+            Ast::File(f) => f.main = true,
+            _ => {}
         }
     }
 }
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Expr {
+    Ref(Ref),
+    Lit(Lit),
+}
+
+// impl Expr {
+//     pub fn dump(&self) -> String {
+//         match self {
+//             Expr::Ref(r) => r.dump(),
+//             Expr::Lit(l) => l.clone(),
+//         }
+//     }
+// }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum AstKind {
@@ -80,83 +93,8 @@ impl std::fmt::Display for AstKind {
     }
 }
 
+#[cfg(test)]
 impl Ast {
-    pub fn dump(&self) -> String {
-        match self {
-            Ast::Let(l) => {
-                let mut buf: String = "let".into();
-                buf.push_str(&format!(" {} ", l.name));
-                for (name, ty) in l.params.iter() {
-                    buf.push_str(&format!("{}: {}, ", name, ty));
-                }
-                buf.push_str(&format!(":{} ", l.ty));
-                for expr in l.expr.iter() {
-                    match expr {
-                        Expr::Lit(lit) => {
-                            buf.push_str("{\"");
-                            buf.push_str(&lit);
-                            buf.push_str("\"}");
-                        }
-                        Expr::Ref(re) => {
-                            buf.push_str("{$");
-                            buf.push_str(&re.dump());
-                            buf.push_str("$}");
-                        }
-                    }
-                }
-                buf
-            }
-            Ast::Dir(d) => {
-                let mut buf: String = "dir".into();
-                buf.push_str(&format!(" {}(", d.alias));
-                for (name, ty) in d.params.iter() {
-                    buf.push_str(&format!("{}: {}, ", name, ty));
-                }
-                buf.push_str(&format!(
-                    "): \"{}\" {{\n",
-                    d.path.file_name().unwrap().to_str().unwrap()
-                ));
-                for child in d.children.iter() {
-                    buf.push_str(&child.dump());
-                    buf.push_str(",\n")
-                }
-                buf.push_str("}");
-                buf
-            }
-            Ast::File(f) => {
-                let mut buf: String = "file".into();
-                buf.push_str(&format!(" {}(", f.alias));
-                for (name, ty) in f.params.iter() {
-                    buf.push_str(&format!("{}: {}, ", name, ty));
-                }
-                buf.push_str(&format!("): \"{}\"", f.name));
-                for expr in f.content.iter() {
-                    match expr {
-                        Expr::Lit(lit) => {
-                            buf.push_str("{\"");
-                            buf.push_str(&lit);
-                            buf.push_str("\"}");
-                        }
-                        Expr::Ref(re) => {
-                            buf.push_str("{$");
-                            buf.push_str(&re.dump());
-                            buf.push_str("$}");
-                        }
-                    }
-                }
-                buf
-            }
-            Ast::Lit(lit) => lit.clone(),
-            Ast::Ref(re) => re.dump(),
-            Ast::Req(req) => {
-                let mut buf: String = "req".into();
-                buf.push_str(&format!(" {}:", req.name));
-                buf.push_str(&format!("{};", req.ty));
-                buf
-            }
-        }
-    }
-
     pub fn main(&self) -> bool {
         match self {
             Ast::Let(l) => l.main,
@@ -176,14 +114,14 @@ impl Ast {
         }
     }
 
-    pub fn name(&self) -> Option<String> {
+    pub fn name(&self) -> String {
         match self {
-            Ast::Let(l) => Some(l.name.clone()),
-            Ast::Req(r) => Some(r.name.clone()),
-            Ast::Dir(d) => Some(d.path.to_str().unwrap().to_string()),
-            Ast::File(f) => Some(f.name.clone()),
-            Ast::Ref(r) => Some(r.name.clone()),
-            Ast::Lit(_) => None,
+            Ast::Let(l) => l.name.clone(),
+            Ast::Req(r) => r.name.clone(),
+            Ast::Dir(d) => d.path.to_str().unwrap().to_string(),
+            Ast::File(f) => f.path.clone(),
+            Ast::Ref(r) => r.name.clone(),
+            _ => unreachable!("A Literal cannot be inserted as a symbol."),
         }
     }
 
@@ -213,10 +151,86 @@ impl Ast {
             Ast::Req(_) => AstKind::Req,
             Ast::Dir(_) => AstKind::Dir,
             Ast::File(_) => AstKind::File,
-            Ast::Ref(r) => r.kind.clone(),
+            Ast::Ref(_) => AstKind::Req,
             Ast::Lit(_) => AstKind::Lit,
         }
     }
+
+    //     pub fn dump(&self) -> String {
+    //         match self {
+    //             Ast::Let(l) => {
+    //                 let mut buf: String = "let".into();
+    //                 buf.push_str(&format!(" {} ", l.name));
+    //                 for (name, ty) in l.params.iter() {
+    //                     buf.push_str(&format!("{}: {}, ", name, ty));
+    //                 }
+    //                 buf.push_str(&format!(":{} ", l.ty));
+    //                 for expr in l.expr.iter() {
+    //                     match expr {
+    //                         Expr::Lit(lit) => {
+    //                             buf.push_str("{\"");
+    //                             buf.push_str(&lit);
+    //                             buf.push_str("\"}");
+    //                         }
+    //                         Expr::Ref(re) => {
+    //                             buf.push_str("{$");
+    //                             buf.push_str(&re.dump());
+    //                             buf.push_str("$}");
+    //                         }
+    //                     }
+    //                 }
+    //                 buf
+    //             }
+    //             Ast::Dir(d) => {
+    //                 let mut buf: String = "dir".into();
+    //                 buf.push_str(&format!(" {}(", d.alias));
+    //                 for (name, ty) in d.params.iter() {
+    //                     buf.push_str(&format!("{}: {}, ", name, ty));
+    //                 }
+    //                 buf.push_str(&format!(
+    //                     "): \"{}\" {{\n",
+    //                     d.path.file_name().unwrap().to_str().unwrap()
+    //                 ));
+    //                 for child in d.children.iter() {
+    //                     buf.push_str(&child.dump());
+    //                     buf.push_str(",\n")
+    //                 }
+    //                 buf.push_str("}");
+    //                 buf
+    //             }
+    //             Ast::File(f) => {
+    //                 let mut buf: String = "file".into();
+    //                 buf.push_str(&format!(" {}(", f.alias));
+    //                 for (name, ty) in f.params.iter() {
+    //                     buf.push_str(&format!("{}: {}, ", name, ty));
+    //                 }
+    //                 buf.push_str(&format!("): \"{}\"", f.path));
+    //                 for expr in f.content.iter() {
+    //                     match expr {
+    //                         Expr::Lit(lit) => {
+    //                             buf.push_str("{\"");
+    //                             buf.push_str(&lit);
+    //                             buf.push_str("\"}");
+    //                         }
+    //                         Expr::Ref(re) => {
+    //                             buf.push_str("{$");
+    //                             buf.push_str(&re.dump());
+    //                             buf.push_str("$}");
+    //                         }
+    //                     }
+    //                 }
+    //                 buf
+    //             }
+    //             Ast::Lit(lit) => lit.clone(),
+    //             Ast::Ref(re) => re.dump(),
+    //             Ast::Req(req) => {
+    //                 let mut buf: String = "req".into();
+    //                 buf.push_str(&format!(" {}:", req.name));
+    //                 buf.push_str(&format!("{};", req.ty));
+    //                 buf
+    //             }
+    //         }
+    //     }
 }
 
 impl From<&AstKind> for AstKind {
@@ -244,14 +258,14 @@ pub struct Dir {
 pub struct File {
     pub main: bool,
     pub params: Vec<(String, Ty)>,
-    pub name: String,
+    pub path: String,
     pub alias: String,
     pub content: Vec<Expr>,
 }
 
 impl File {
     pub fn path(&self, parent: std::path::PathBuf) -> std::path::PathBuf {
-        parent.join(&self.name)
+        parent.join(&self.path)
     }
 }
 
@@ -274,27 +288,84 @@ pub struct Req {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Ref {
     pub name: String,
-    pub kind: AstKind,
     pub args: Vec<(String, Expr)>,
     pub ty: Ty,
 }
 
-impl Ref {
-    pub fn dump(&self) -> String {
-        let mut buf: String = match self.kind {
-            AstKind::Dir => "@".into(),
-            AstKind::File => "#".into(),
-            AstKind::Let => "!".into(),
-            AstKind::Req => "!".into(),
-            AstKind::Lit => unreachable!(),
-        };
-        buf.push_str(&self.name);
-        buf.push_str("(");
-        for (name, expr) in self.args.iter() {
-            buf.push_str(&format!("{}: {}", name, expr.dump()));
-        }
-        buf.push_str(")");
+// impl Ref {
+//     pub fn dump(&self) -> String {
+//         let mut buf: String = match self.kind {
+//             AstKind::Dir => "@".into(),
+//             AstKind::File => "#".into(),
+//             AstKind::Let => "!".into(),
+//             AstKind::Req => "!".into(),
+//             AstKind::Lit => unreachable!(),
+//         };
+//         buf.push_str(&self.name);
+//         buf.push_str("(");
+//         for (name, expr) in self.args.iter() {
+//             buf.push_str(&format!("{}: {}", name, expr.dump()));
+//         }
+//         buf.push_str(")");
 
-        buf
+//         buf
+//     }
+// }
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Lit {
+    String(String),
+    Dir(Dir),
+    File(File),
+}
+
+impl TryFrom<Lit> for String {
+    type Error = ExecErr;
+
+    fn try_from(lit: Lit) -> Result<Self, Self::Error> {
+        match lit {
+            Lit::String(s) => Ok(s),
+            _ => Err(ExecErr::InvalidType("".into(), "".into())),
+        }
+    }
+}
+
+impl TryFrom<Lit> for File {
+    type Error = ExecErr;
+
+    fn try_from(lit: Lit) -> Result<Self, Self::Error> {
+        match lit {
+            Lit::File(f) => Ok(f),
+            _ => Err(ExecErr::InvalidType("".into(), "".into())),
+        }
+    }
+}
+
+impl TryFrom<Lit> for Dir {
+    type Error = ExecErr;
+
+    fn try_from(lit: Lit) -> Result<Self, Self::Error> {
+        match lit {
+            Lit::Dir(d) => Ok(d),
+            _ => Err(ExecErr::InvalidType("".into(), "".into())),
+        }
+    }
+}
+
+pub enum LitExecutable {
+    String(String),
+    File(File),
+    Dir(Dir),
+}
+
+impl TryFrom<Lit> for LitExecutable {
+    type Error = ExecErr;
+
+    fn try_from(lit: Lit) -> Result<Self, Self::Error> {
+        match lit {
+            Lit::String(s) => Ok(LitExecutable::String(s)),
+            Lit::File(f) => Ok(LitExecutable::File(f)),
+            Lit::Dir(d) => Ok(LitExecutable::Dir(d)),
+        }
     }
 }

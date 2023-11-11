@@ -10,6 +10,7 @@
   - [x] File
   - [ ] let
 - [ ] Figure out a better way for referencing (currently using `@` for dirs, `#` for files, and `$` for lets)
+  - [ ] Remove ast.kind adn ast.ty and change stringify into resolve for general types
 - [ ] Make `req` work
 - [ ] Switch from `{" .. "}` to `{{ .. }}`
 - [ ] Support Annotations

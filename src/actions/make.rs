@@ -1,11 +1,12 @@
 use crate::{
+    ast::Expr,
     exec::{self, Syms},
     syntax::Syntax,
 };
 
 use super::local::Local;
 
-pub fn make(name: String, args: Vec<(String, String)>) {
+pub fn make(name: String, args: Vec<(String, Expr)>) {
     let repo = match Local::new() {
         Ok(local) => local,
         Err(err) => {
@@ -22,7 +23,7 @@ pub fn make(name: String, args: Vec<(String, String)>) {
         }
     };
 
-    let mut syms = Syms::new(args);
+    let mut syms = Syms::new(args.clone());
     let mut syn = Syntax::new(template.body.as_bytes());
     let res = match syn.parse_all() {
         Ok(res) => res,
@@ -45,7 +46,7 @@ pub fn make(name: String, args: Vec<(String, String)>) {
         }
     };
 
-    match exec::Exec::run(&syms, main) {
+    match exec::Exec::run(&syms, main, args) {
         Ok(_) => println!("Done"),
         Err(err) => {
             println!("{:#?}", err);

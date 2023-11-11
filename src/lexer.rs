@@ -45,35 +45,17 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn look_ahead(&mut self) -> Result<Token<'a>, Trace<'a, LxErr>> {
-        if let None = self.tmpcx {
-            self.tmpcx = Some(self.cx.to_owned());
-        }
+        self.tmpcx = Some(self.cx.to_owned());
         if self.cx.pending.has_some() {
             return Ok(self.cx.pending.pop_sure());
         }
-        let tok = self.lx_tok()?;
-        println!("Lookahead: {}", tok);
-        Ok(tok)
-    }
-
-    pub fn look_ahead_one(&mut self) -> Result<Token<'a>, Trace<'a, LxErr>> {
-        if let None = self.tmpcx {
-            self.tmpcx = Some(self.cx.to_owned());
-        }
-
-        if self.cx.pending.has_some() {
-            return Ok(self.cx.pending.pop_sure());
-        }
-
         let tok = self.lx_tok()?;
         self.reset();
         Ok(tok)
     }
 
     pub fn next_token(&mut self) -> Result<Token<'a>, Trace<'a, LxErr>> {
-        if let Some(cx) = self.tmpcx.take() {
-            self.cx = cx;
-        }
+        self.reset();
         let tok: Token<'a> = if self.cx.pending.has_some() {
             println!(
                 "Nexttoken (pending): {:#?}",
@@ -88,9 +70,7 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn try_lx_str(&mut self) -> Result<Token<'a>, Trace<'a, LxErr>> {
-        if let None = self.tmpcx {
-            self.tmpcx = Some(self.cx.to_owned());
-        }
+        self.reset();
         if self.cx.pending.has_some() {
             if let Ok(tok) = self.cx.pending.peek() {
                 if let TokKind::Literal(Literal::String) = tok.kind {
@@ -120,12 +100,12 @@ impl<'a> Lexer<'a> {
             b'0'..=b'9' => self.lx_num()?,
             tok if tok == b'{' => match self.peek_n(1) {
                 Some(b'"') => {
-                    let _ = self.take();
-                    let _ = self.take();
+                    self.take();
+                    self.take();
 
                     let tok = Token {
-                        src: self.src(&self.src[self.cx.ix - 2..self.cx.ix]),
-                        val: None,
+                        src: self.src_double(),
+                        // val: None,
                         kind: TokKind::Opener(Opener::LCurlyDQuote),
                     };
                     let st = self.lx_str(false)?;
@@ -136,8 +116,8 @@ impl<'a> Lexer<'a> {
                     self.take();
                     self.take();
                     Token {
-                        src: self.src(&self.src[self.cx.ix - 2..self.cx.ix]),
-                        val: None,
+                        src: self.src_double(),
+                        // val: None,
                         kind: TokKind::Opener(Opener::LCurlyDollar),
                     }
                 }
@@ -146,8 +126,8 @@ impl<'a> Lexer<'a> {
                     // println!("{:#?}", t.unwrap() as char);
                     let _ = self.take();
                     Token {
-                        src: self.src(&self.src[self.cx.ix - 1..self.cx.ix]),
-                        val: None,
+                        src: self.src_single(),
+                        // val: None,
                         kind: TokKind::Opener(Opener::LCurly),
                     }
                 }
@@ -157,24 +137,24 @@ impl<'a> Lexer<'a> {
                     self.take();
                     self.take();
                     Token {
-                        src: self.src(&self.src[self.cx.ix - 2..self.cx.ix]),
-                        val: None,
+                        src: self.src_double(),
+                        // val: None,
                         kind: TokKind::Closer(Closer::RCurlyDQuote),
                     }
                 }
                 _ => {
                     self.take();
                     let tok = Token {
-                        src: self.src(&self.src[self.cx.ix - 1..self.cx.ix]),
-                        val: None,
+                        src: self.src_single(),
+                        // val: None,
                         kind: TokKind::Opener(Opener::DQuote),
                     };
                     let st = self.lx_str(true)?;
                     self.cx.pending.push(st);
                     self.take();
                     self.cx.pending.push(Token {
-                        src: self.src(&self.src[self.cx.ix - 1..self.cx.ix]),
-                        val: None,
+                        src: self.src_single(),
+                        // val: None,
                         kind: TokKind::Closer(Closer::DQuote),
                     });
                     tok
@@ -185,36 +165,36 @@ impl<'a> Lexer<'a> {
                     self.take();
                     self.take();
                     Token {
-                        src: self.src(&self.src[self.cx.ix - 2..self.cx.ix]),
-                        val: None,
+                        src: self.src_double(),
+                        // val: None,
                         kind: TokKind::Closer(Closer::RCurlyDollar),
                     }
                 }
                 Some(ch) => {
                     self.take();
                     Token {
-                        src: self.src(&self.src[self.cx.ix - 1..self.cx.ix]),
-                        val: None,
+                        src: self.src_single(),
+                        // val: None,
                         kind: TokKind::from(ch),
                     }
                 }
                 None => return Err(self.err(LxErrKind::UnexpectedEOF, self.cx.ix)),
             },
             ch => {
-                self.take();
                 // println!(
                 //     "Tok: {}, Position: {}, Length: {}",
                 //     ch as char,
                 //     self.cx.ix,
                 //     self.src.len()
                 // );
+                self.take();
                 Token {
-                    src: if self.cx.ix >= self.src.len() {
-                        self.src(&self.src[self.cx.ix - 1..])
+                    src: if self.src.len() == 0 {
+                        self.src(&self.src[self.cx.ix..])
                     } else {
-                        self.src(&self.src[self.cx.ix - 1..self.cx.ix])
+                        self.src_single()
                     },
-                    val: None,
+                    // val: None,
                     kind: TokKind::from(ch),
                 }
             }
@@ -239,10 +219,9 @@ impl<'a> Lexer<'a> {
             };
             let buf = &self.src[six..self.cx.ix];
             if let Some(kind) = token_kind {
-                // println!("String: {}", self.to_str_or(buf)?);
                 return Ok(Token {
                     src: self.src(&buf),
-                    val: Some(self.to_str_or(buf)?),
+                    // val: Some(self.try_to_str(buf)?),
                     kind,
                 });
             }
@@ -262,11 +241,11 @@ impl<'a> Lexer<'a> {
         }
 
         let buf = &self.src[six..self.cx.ix];
-        let val = self.to_str_or(buf)?;
+        let val = self.try_to_str(buf)?;
 
         Ok(Token::<'a> {
             src: self.src(&buf),
-            val: Some(val),
+            // val: Some(val),
             kind: TokKind::from(val),
         })
     }
@@ -283,7 +262,7 @@ impl<'a> Lexer<'a> {
         let buf = &self.src[six..self.cx.ix];
         Ok(Token {
             src: self.src(&buf),
-            val: Some(std::str::from_utf8(buf).unwrap()),
+            // val: Some(std::str::from_utf8(buf).unwrap()),
             kind: TokKind::Literal(Literal::Int),
         })
     }
@@ -357,14 +336,34 @@ impl<'a> Lexer<'a> {
     fn src(&self, buf: &'a [u8]) -> Source<'a> {
         Source {
             bix: self.cx.ix - buf.len(),
-            col: self.cx.col,
+            col: self.cx.col - buf.len(),
             line: self.cx.line,
             src: &buf,
             len: buf.len(),
         }
     }
 
-    fn to_str_or(&self, buf: &'a [u8]) -> Result<&'a str, Trace<'a, LxErr>> {
+    fn src_double(&self) -> Source<'a> {
+        Source {
+            bix: self.cx.ix - 2,
+            col: self.cx.col - 2,
+            line: self.cx.line,
+            src: &self.src[self.cx.ix - 2..self.cx.ix],
+            len: 2,
+        }
+    }
+
+    fn src_single(&self) -> Source<'a> {
+        Source {
+            bix: self.cx.ix - 1,
+            col: self.cx.col - 1,
+            line: self.cx.line,
+            src: &self.src[self.cx.ix - 1..self.cx.ix],
+            len: 1,
+        }
+    }
+
+    fn try_to_str(&self, buf: &'a [u8]) -> Result<&'a str, Trace<'a, LxErr>> {
         std::str::from_utf8(buf).map_err(|_| self.err(LxErrKind::InvalidUtf8, self.cx.ix))
     }
 
