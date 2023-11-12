@@ -1,11 +1,15 @@
-#[derive(Debug, PartialEq, Eq, Clone)]
+use crate::smallvec::SmallVec;
+
+#[derive(Clone)]
 pub struct Fifo<E: Copy> {
-    fifo: Vec<E>,
+    fifo: SmallVec<E, 20>,
 }
 
 impl<E: Copy> Fifo<E> {
     pub fn new() -> Self {
-        Self { fifo: Vec::new() }
+        Self {
+            fifo: SmallVec::new(),
+        }
     }
 
     pub fn push(&mut self, e: E) {

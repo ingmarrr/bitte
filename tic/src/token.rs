@@ -109,6 +109,9 @@ pub enum TokKind {
     Req,
     For,
     In,
+    If,
+    Else,
+    ElseIf,
     StringKw,
     ListKw,
 
@@ -117,12 +120,11 @@ pub enum TokKind {
     Bang,
     Dollar,
     Pound,
-    Slash,
     Backslash,
     Colon,
     Semi,
     Comma,
-    Equal,
+    Eq,
     Dot,
 
     // Openers
@@ -143,8 +145,17 @@ pub enum TokKind {
     RSquare,
     RParen,
 
+    // Operators
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    DoubleEq,
+    Neq,
+
+    // Literals
     StringLit,
-    Int,
+    IntLit,
 
     Ident,
     Invalid,
@@ -161,17 +172,18 @@ impl std::fmt::Display for TokKind {
             TokKind::Req => write!(f, "Req"),
             TokKind::For => write!(f, "For"),
             TokKind::In => write!(f, "In"),
+            TokKind::If => write!(f, "If"),
+            TokKind::Else => write!(f, "Else"),
+            TokKind::ElseIf => write!(f, "ElseIf"),
             TokKind::StringKw => write!(f, "String (Keyword)"),
             TokKind::ListKw => write!(f, "List (Keyword)"),
 
             TokKind::At => write!(f, "@"),
             TokKind::Bang => write!(f, "!"),
             TokKind::Backslash => write!(f, "\\"),
-            TokKind::Slash => write!(f, "/"),
             TokKind::Colon => write!(f, ":"),
             TokKind::Semi => write!(f, ";"),
             TokKind::Comma => write!(f, ","),
-            TokKind::Equal => write!(f, "="),
             TokKind::Dot => write!(f, "."),
             TokKind::Dollar => write!(f, "$"),
             TokKind::Pound => write!(f, "#"),
@@ -192,8 +204,16 @@ impl std::fmt::Display for TokKind {
             TokKind::RParen => write!(f, ")"),
             TokKind::CloserDQuote => write!(f, "\""),
 
+            TokKind::Plus => write!(f, "+"),
+            TokKind::Minus => write!(f, "-"),
+            TokKind::Star => write!(f, "*"),
+            TokKind::Slash => write!(f, "/"),
+            TokKind::Eq => write!(f, "="),
+            TokKind::DoubleEq => write!(f, "=="),
+            TokKind::Neq => write!(f, "!="),
+
             TokKind::StringLit => write!(f, "String (Literal)"),
-            TokKind::Int => write!(f, "Int (Literal)"),
+            TokKind::IntLit => write!(f, "Int (Literal)"),
 
             TokKind::Ident => write!(f, "Identifier"),
             TokKind::EOF => write!(f, "End of File"),
@@ -209,13 +229,11 @@ impl From<u8> for TokKind {
             b'!' => TokKind::Bang,
             b'$' => TokKind::Dollar,
             b'#' => TokKind::Pound,
-            b'/' => TokKind::Slash,
             b'\\' => TokKind::Backslash,
             b':' => TokKind::Colon,
             b';' => TokKind::Semi,
             b',' => TokKind::Comma,
             b'.' => TokKind::Dot,
-            b'=' => TokKind::Equal,
 
             b'{' => TokKind::LCurly,
             b'[' => TokKind::LSquare,
@@ -225,6 +243,12 @@ impl From<u8> for TokKind {
             b']' => TokKind::RSquare,
             b')' => TokKind::RParen,
 
+            b'+' => TokKind::Plus,
+            b'-' => TokKind::Minus,
+            b'*' => TokKind::Star,
+            b'/' => TokKind::Slash,
+            b'=' => TokKind::Eq,
+            
             b'\0' => TokKind::EOF,
             _ => TokKind::Invalid,
         }
@@ -241,7 +265,10 @@ impl From<&str> for TokKind {
             "req" => TokKind::Req,
             "for" => TokKind::For,
             "in" => TokKind::In,
-            "string" => TokKind::StringKw,
+            "if" => TokKind::If,
+            "else" => TokKind::Else,
+            "elseif" => TokKind::ElseIf,
+            "str" => TokKind::StringKw,
             "list" => TokKind::ListKw,
 
             "@" => TokKind::At,
@@ -254,7 +281,8 @@ impl From<&str> for TokKind {
             ";" => TokKind::Semi,
             "," => TokKind::Comma,
             "." => TokKind::Dot,
-            "=" => TokKind::Equal,
+            "=" => TokKind::Eq,
+            "==" => TokKind::DoubleEq,
 
             "{" => TokKind::LCurly,
             "{{" => TokKind::LCurlyDouble,
@@ -280,6 +308,7 @@ impl From<&str> for TokKind {
 pub enum Opener {
     DQuote,
     LCurly,
+    LCurlyDouble,
     LCurlyDollar,
     LCurlyDQuote,
     LSquare,
@@ -291,6 +320,7 @@ impl From<TokKind> for Opener {
         match kind {
             TokKind::OpenerDQuote => Opener::DQuote,
             TokKind::LCurly => Opener::LCurly,
+            TokKind::LCurlyDouble => Opener::LCurlyDouble,
             TokKind::LCurlyDollar => Opener::LCurlyDollar,
             TokKind::LCurlyDQuote => Opener::LCurlyDQuote,
             TokKind::LSquare => Opener::LSquare,
@@ -305,6 +335,7 @@ impl Opener {
         match self {
             Opener::DQuote => Closer::DQuote,
             Opener::LCurly => Closer::RCurly,
+            Opener::LCurlyDouble => Closer::RCurlyDouble,
             Opener::LCurlyDollar => Closer::RCurlyDollar,
             Opener::LCurlyDQuote => Closer::RCurlyDQuote,
             Opener::LSquare => Closer::RSquare,
@@ -318,6 +349,7 @@ impl std::fmt::Display for Opener {
         match self {
             Opener::DQuote => write!(f, "\""),
             Opener::LCurly => write!(f, "{{"),
+            Opener::LCurlyDouble => write!(f, "{{{{"),
             Opener::LCurlyDollar => write!(f, "{{$"),
             Opener::LCurlyDQuote => write!(f, "{{\""),
             Opener::LSquare => write!(f, "["),
@@ -329,9 +361,10 @@ impl std::fmt::Display for Opener {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Closer {
     DQuote,
+    RCurly,
+    RCurlyDouble,
     RCurlyDollar,
     RCurlyDQuote,
-    RCurly,
     RSquare,
     RParen,
 }
@@ -340,9 +373,10 @@ impl From<TokKind> for Closer {
     fn from(kind: TokKind) -> Self {
         match kind {
             TokKind::CloserDQuote => Closer::DQuote,
+            TokKind::RCurly => Closer::RCurly,
+            TokKind::RCurlyDouble => Closer::RCurlyDouble,
             TokKind::RCurlyDollar => Closer::RCurlyDollar,
             TokKind::RCurlyDQuote => Closer::RCurlyDQuote,
-            TokKind::RCurly => Closer::RCurly,
             TokKind::RSquare => Closer::RSquare,
             TokKind::RParen => Closer::RParen,
             _ => panic!("Invalid closer: {}", kind),
@@ -354,9 +388,10 @@ impl std::fmt::Display for Closer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Closer::DQuote => write!(f, "\""),
+            Closer::RCurly => write!(f, "}}"),
+            Closer::RCurlyDouble => write!(f, "}}}}"),
             Closer::RCurlyDollar => write!(f, "$}}"),
             Closer::RCurlyDQuote => write!(f, "\"}}"),
-            Closer::RCurly => write!(f, "}}"),
             Closer::RSquare => write!(f, "]"),
             Closer::RParen => write!(f, ")"),
         }
@@ -364,7 +399,7 @@ impl std::fmt::Display for Closer {
 }
 
 #[cfg(test)]
-mod tests {
+mod token_tests {
     use super::*;
 
     #[test]
@@ -376,7 +411,7 @@ mod tests {
         assert_eq!(TokKind::from("req"), TokKind::Req);
         assert_eq!(TokKind::from("for"), TokKind::For);
         assert_eq!(TokKind::from("in"), TokKind::In);
-        assert_eq!(TokKind::from("string"), TokKind::StringKw);
+        assert_eq!(TokKind::from("str"), TokKind::StringKw);
         assert_eq!(TokKind::from("list"), TokKind::ListKw);
     }
 
@@ -392,7 +427,7 @@ mod tests {
         assert_eq!(TokKind::from(";"), TokKind::Semi);
         assert_eq!(TokKind::from(","), TokKind::Comma);
         assert_eq!(TokKind::from("."), TokKind::Dot);
-        assert_eq!(TokKind::from("="), TokKind::Equal);
+        assert_eq!(TokKind::from("="), TokKind::Eq);
     }
 
     #[test]

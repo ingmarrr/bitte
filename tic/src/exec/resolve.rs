@@ -1,7 +1,9 @@
 use crate::ast::Ast;
+use crate::ast::BinOp;
 use crate::ast::Dir;
 use crate::ast::Expr;
 use crate::ast::File;
+use crate::ast::If;
 use crate::ast::Lit;
 use crate::ast::LitExecutable;
 use crate::ast::Ref;
@@ -40,6 +42,7 @@ impl Resolve for Expr {
         match self {
             Expr::Ref(r) => r.resolve(syms, target, args),
             Expr::Lit(l) => O::try_from(l),
+            Expr::If(i) => i.resolve(syms, target, args),
         }
     }
 }
@@ -127,5 +130,35 @@ impl Resolve for LitExecutable {
             Le::File(file) => file.resolve(syms, target, args),
             Le::String(st) => st.resolve(syms, target, args),
         }
+    }
+}
+
+impl Resolve for If {
+    fn resolve<O>(self, syms: &Syms, target: &Ty, args: Vec<(String, Expr)>) -> Result<O, ExecErr>
+    where
+        O: TryFrom<Lit, Error = ExecErr>,
+    {
+        let cond = self.cond.resolve::<bool>(syms, target, args.clone())?;
+        let cond = match cond {
+            Lit::String(st) => st,
+            _ => return Err(ExecErr::InvalidType("if".into(), "str".into())),
+        };
+        let cond = cond
+            .parse::<bool>()
+            .map_err(|_| ExecErr::InvalidType("if".into(), "bool".into()))?;
+        if cond {
+            self.then.resolve(syms, target, args)
+        } else {
+            self.els.resolve(syms, target, args)
+        }
+    }
+}
+
+impl Resolve for BinOp {
+    fn resolve<O>(self, syms: &Syms, target: &Ty, args: Vec<(String, Expr)>) -> Result<O, ExecErr>
+    where
+        O: TryFrom<Lit, Error = ExecErr>,
+    {
+        O::try_from(Lit::BinOp(self))
     }
 }

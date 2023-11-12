@@ -20,3 +20,8 @@
   - [ ] for
   - [ ] else
 - [ ] other languages
+
+-----
+
+- [ ] Eval BinOps
+- [ ] Resolve BinOps

@@ -1,7 +1,6 @@
 req name: str;
 
-let main_func = 
-{"
+let main_func = {"
     package main;
 
     import "fmt"
@@ -11,8 +10,7 @@ let main_func =
     }
 "};
 
-main dir project: !name 
-{
+main dir project: !name {
     src {
         "main.go": main_func
     },

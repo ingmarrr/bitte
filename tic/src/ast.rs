@@ -58,21 +58,6 @@ impl Ast {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Expr {
-    Ref(Ref),
-    Lit(Lit),
-}
-
-// impl Expr {
-//     pub fn dump(&self) -> String {
-//         match self {
-//             Expr::Ref(r) => r.dump(),
-//             Expr::Lit(l) => l.clone(),
-//         }
-//     }
-// }
-
-#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum AstKind {
     Let,
     Req,
@@ -155,82 +140,6 @@ impl Ast {
             Ast::Lit(_) => AstKind::Lit,
         }
     }
-
-    //     pub fn dump(&self) -> String {
-    //         match self {
-    //             Ast::Let(l) => {
-    //                 let mut buf: String = "let".into();
-    //                 buf.push_str(&format!(" {} ", l.name));
-    //                 for (name, ty) in l.params.iter() {
-    //                     buf.push_str(&format!("{}: {}, ", name, ty));
-    //                 }
-    //                 buf.push_str(&format!(":{} ", l.ty));
-    //                 for expr in l.expr.iter() {
-    //                     match expr {
-    //                         Expr::Lit(lit) => {
-    //                             buf.push_str("{\"");
-    //                             buf.push_str(&lit);
-    //                             buf.push_str("\"}");
-    //                         }
-    //                         Expr::Ref(re) => {
-    //                             buf.push_str("{$");
-    //                             buf.push_str(&re.dump());
-    //                             buf.push_str("$}");
-    //                         }
-    //                     }
-    //                 }
-    //                 buf
-    //             }
-    //             Ast::Dir(d) => {
-    //                 let mut buf: String = "dir".into();
-    //                 buf.push_str(&format!(" {}(", d.alias));
-    //                 for (name, ty) in d.params.iter() {
-    //                     buf.push_str(&format!("{}: {}, ", name, ty));
-    //                 }
-    //                 buf.push_str(&format!(
-    //                     "): \"{}\" {{\n",
-    //                     d.path.file_name().unwrap().to_str().unwrap()
-    //                 ));
-    //                 for child in d.children.iter() {
-    //                     buf.push_str(&child.dump());
-    //                     buf.push_str(",\n")
-    //                 }
-    //                 buf.push_str("}");
-    //                 buf
-    //             }
-    //             Ast::File(f) => {
-    //                 let mut buf: String = "file".into();
-    //                 buf.push_str(&format!(" {}(", f.alias));
-    //                 for (name, ty) in f.params.iter() {
-    //                     buf.push_str(&format!("{}: {}, ", name, ty));
-    //                 }
-    //                 buf.push_str(&format!("): \"{}\"", f.path));
-    //                 for expr in f.content.iter() {
-    //                     match expr {
-    //                         Expr::Lit(lit) => {
-    //                             buf.push_str("{\"");
-    //                             buf.push_str(&lit);
-    //                             buf.push_str("\"}");
-    //                         }
-    //                         Expr::Ref(re) => {
-    //                             buf.push_str("{$");
-    //                             buf.push_str(&re.dump());
-    //                             buf.push_str("$}");
-    //                         }
-    //                     }
-    //                 }
-    //                 buf
-    //             }
-    //             Ast::Lit(lit) => lit.clone(),
-    //             Ast::Ref(re) => re.dump(),
-    //             Ast::Req(req) => {
-    //                 let mut buf: String = "req".into();
-    //                 buf.push_str(&format!(" {}:", req.name));
-    //                 buf.push_str(&format!("{};", req.ty));
-    //                 buf
-    //             }
-    //         }
-    //     }
 }
 
 impl From<&AstKind> for AstKind {
@@ -251,7 +160,7 @@ pub struct Dir {
     pub params: Vec<(String, Ty)>,
     pub path: std::path::PathBuf,
     pub alias: String,
-    pub children: Vec<Ast>,
+    pub children: Vec<Expr>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -286,6 +195,13 @@ pub struct Req {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Expr {
+    Ref(Ref),
+    Lit(Lit),
+    If(If),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Ref {
     pub name: String,
     pub args: Vec<(String, Expr)>,
@@ -293,10 +209,46 @@ pub struct Ref {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+pub struct If {
+    pub cond: BinOp,
+    pub then: Vec<Expr>,
+    pub els: Vec<Expr>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct BinOp {
+    pub op: Op,
+    pub lhs: Box<Expr>,
+    pub rhs: Box<Expr>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Op {
+    Add,
+    Mul,
+    Eq,
+    Neq,
+}
+
+impl std::fmt::Display for Op {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use Op::*;
+        match self {
+            Add => f.write_str("+"),
+            Mul => f.write_str("*"),
+            Eq => f.write_str("=="),
+            Neq => f.write_str("!="),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Lit {
+    Int(String),
     String(String),
     Dir(Dir),
     File(File),
+    BinOp(BinOp),
 }
 
 impl TryFrom<Lit> for String {
@@ -332,6 +284,21 @@ impl TryFrom<Lit> for Dir {
     }
 }
 
+impl TryFrom<Lit> for bool {
+    type Error = ExecErr;
+
+    fn try_from(lit: Lit) -> Result<Self, Self::Error> {
+        match lit {
+            Lit::BinOp(bin) => match bin.op {
+                Op::Eq => Ok(bin.lhs == bin.rhs),
+                Op::Neq => Ok(bin.lhs != bin.rhs),
+                _ => Err(ExecErr::InvalidType("".into(), "".into())),
+            },
+            _ => Err(ExecErr::InvalidType("".into(), "".into())),
+        }
+    }
+}
+
 pub enum LitExecutable {
     String(String),
     File(File),
@@ -346,6 +313,7 @@ impl TryFrom<Lit> for LitExecutable {
             Lit::String(s) => Ok(LitExecutable::String(s)),
             Lit::File(f) => Ok(LitExecutable::File(f)),
             Lit::Dir(d) => Ok(LitExecutable::Dir(d)),
+            l => Err(ExecErr::InvalidExecutable),
         }
     }
 }

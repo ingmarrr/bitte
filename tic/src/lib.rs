@@ -8,6 +8,7 @@ pub mod err;
 pub mod exec;
 pub mod fifo;
 pub mod lexer;
+pub mod smallvec;
 pub mod stack;
 pub mod syntax;
 pub mod token;

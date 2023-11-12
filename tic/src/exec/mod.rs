@@ -7,6 +7,7 @@ use crate::{
 
 use self::executable::Executable;
 
+pub mod dump;
 pub mod executable;
 pub mod resolve;
 

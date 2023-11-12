@@ -1,9 +1,9 @@
 use std::io::Error;
 use std::io::Write;
 
-use crate::ast::Ast;
 use crate::ast::Dir;
 use crate::ast::File;
+use crate::ast::Lit;
 use crate::ast::LitExecutable;
 use crate::ast::Ty;
 use crate::exec::ExecErr;
@@ -51,9 +51,9 @@ impl Executable for Dir {
 
         for child in self.children.into_iter() {
             match child {
-                Ast::File(file) => file.execute(syms, path.clone(), args.clone())?,
-                Ast::Dir(dir) => dir.execute(syms, path.clone(), args.clone())?,
-                Ast::Ref(ref_) => ref_
+                Expr::Lit(Lit::File(file)) => file.execute(syms, path.clone(), args.clone())?,
+                Expr::Lit(Lit::Dir(dir)) => dir.execute(syms, path.clone(), args.clone())?,
+                Expr::Ref(ref_) => ref_
                     .clone()
                     .resolve::<LitExecutable>(syms, &Ty::Unknown, args.clone())?
                     .execute(syms, path.clone(), args.clone())?,

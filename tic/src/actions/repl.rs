@@ -10,12 +10,8 @@ use crate::{
 pub fn repl() {
     let mut inp = String::new();
     let mut buf = String::new();
-    tilog::init_logger(tilog::Config::default());
+    tilog::init_logger(tilog::Config::default().with_level(tilog::Level::Debug));
     tilog::info!("Tipis Repl");
-    tilog::debug!("Tipis Repl");
-    tilog::warn!("Tipis Repl");
-    tilog::error!("Tipis Repl");
-    tilog::success!("Tipis Repl");
 
     let mut syms = Syms::new(Vec::new());
 
@@ -43,7 +39,8 @@ pub fn repl() {
             }
         }
 
-        let mut syn = syntax::Syntax::new(&buf.as_bytes());
+        let src = buf.clone();
+        let mut syn = syntax::Syntax::new(&src.as_bytes());
         let res = syn.parse_all();
         println!("{:#?}", res);
 
@@ -85,11 +82,6 @@ fn run(syms: &mut Syms, cmd: &str) -> Res {
     }
 
     match parts[0].to_lowercase().as_str() {
-        "commit" => Res::Commit,
-        "clear" | "c" | "cls" => {
-            print!("{}[2J", 27 as char);
-            Res::DidAction
-        }
         "quit" | "q" | "exit" | "e" => std::process::exit(0),
         "show" | "s" => {
             for sym in syms.symbols.values() {
@@ -97,40 +89,21 @@ fn run(syms: &mut Syms, cmd: &str) -> Res {
             }
             Res::DidAction
         }
-        "make" | "mk" | "m" => {
-            println!("{:#?}", parts);
+        "make" | "m" => {
             if parts.len() < 2 {
                 return Res::InvalidArgs;
             }
-            // else if parts.len() > 2 {
-            //     for part in &parts[2..] {
-            //         let arg_parts = part.split('=').collect::<Vec<&str>>();
-            //         if arg_parts.len() != 2 {
-            //             return Res::InvalidArgs;
-            //         }
-            //         let _ = syms.add(Sym {
-            //             scope: Scope::Global,
-            //             val: Ast::Req(Req {
-            //                 name: arg_parts[0].to_string(),
-            //                 ty: Ty::String,
-            //                 expr: arg_parts[1].to_string(),
-            //             }),
-            //         });
-            //     }
-            // }
             let sym = syms.get(&Key(parts[1].to_string(), Scope::Global));
             println!("{:#?}", sym);
-            if let None = sym {
-                return Res::NotFound;
+            if let Some(sy) = sym {
+                let res = Exec::run(syms, sy.val.clone(), Vec::new());
+                println!("{:#?}", res);
+                return match res {
+                    Ok(_) => Res::DidAction,
+                    Err(err) => Res::Err(err.into()),
+                };
             }
-            let sym = sym.unwrap();
-
-            let res = Exec::run(syms, sym.val.clone(), Vec::new());
-            println!("{:#?}", res);
-            match res {
-                Ok(_) => Res::DidAction,
-                Err(err) => Res::Err(err.into()),
-            }
+            Res::NotFound
         }
         _ => Res::Continue,
     }

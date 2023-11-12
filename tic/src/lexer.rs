@@ -3,8 +3,7 @@ use crate::err::{LxErr, LxErrKind, Trace};
 use crate::fifo::Fifo;
 use crate::token::{Source, TokKind, Token};
 
-#[cfg_attr(test, derive(PartialEq))]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Cx<'a> {
     pub ix: usize,
     pub line: usize,
@@ -38,6 +37,9 @@ impl<'a> Lexer<'a> {
         let mut toks = Vec::new();
 
         while let Ok(tok) = self.next_token() {
+            if let TokKind::EOF = tok.kind {
+                break;
+            }
             toks.push(tok);
         }
 
@@ -45,11 +47,17 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn look_ahead(&mut self) -> Result<Token<'a>, Trace<'a, LxErr>> {
-        self.tmpcx = Some(self.cx.to_owned());
+        self.tmpcx = Some(self.cx.clone());
         if self.cx.pending.has_some() {
+            tilog::debug!(
+                lex,
+                "Lookahead (pending): {:#?}",
+                self.cx.pending.peek().unwrap().to_string()
+            );
             return Ok(self.cx.pending.pop_sure());
         }
         let tok = self.lx_tok()?;
+        tilog::debug!(lex, "Lookahead: {}", tok);
         self.reset();
         Ok(tok)
     }
@@ -79,6 +87,15 @@ impl<'a> Lexer<'a> {
         self.lx_str(false)
     }
 
+    #[rustfmt::skip]
+    pub fn try_lx_ident(&mut self) -> Result<Token<'a>, Trace<'a, LxErr>> {
+        self.reset();
+        if let Ok(Token { kind: TokKind::Ident, .. }) = self.cx.pending.peek() {
+            return Ok(self.cx.pending.pop_sure());
+        }
+        self.lx_ident()
+    }
+
     pub fn reset(&mut self) {
         if let Some(cx) = self.tmpcx.take() {
             self.cx = cx;
@@ -90,61 +107,102 @@ impl<'a> Lexer<'a> {
         Ok(match self.peek().or(Some(b'\0')).unwrap() {
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.lx_ident()?,
             b'0'..=b'9' => self.lx_num()?,
-            tok if tok == b'{' => match self.peek_n(1) {
-                Some(b'"') => {
+            b'!' => match self.peek_n(1) {
+                Some(b'=') => {
+                    self.take();
+                    self.take();
+                    Token {
+                        src: self.src_double(),
+                        kind: TokKind::Neq,
+                    }
+                }
+                _ => {
+                    self.take();
+                    Token {
+                        src: self.src_single(),
+                        kind: TokKind::Bang,
+                    }
+                }
+            },
+            b'=' => match self.peek_n(1) {
+                Some(b'=') => {
+                    self.take();
+                    self.take();
+                    Token {
+                        src: self.src_double(),
+                        kind: TokKind::Eq,
+                    }
+                }
+                _ => {
+                    self.take();
+                    Token {
+                        src: self.src_single(),
+                        kind: TokKind::Eq,
+                    }
+                }
+            },
+            b'{' => match self.peek_n(1) {
+                Some(b'{') => {
                     self.take();
                     self.take();
 
-                    let tok = Token {
-                        src: self.src_double(),
-                        kind: TokKind::LCurlyDQuote,
-                    };
+                    let src = self.src_double();
                     let st = self.lx_str(false)?;
-                    let _ = self.cx.pending.push(st);
-                    tok
+                    self.cx.pending.push(st);
+                    Token {
+                        src,
+                        kind: TokKind::LCurlyDouble,
+                    }
                 }
                 Some(b'$') => {
                     self.take();
                     self.take();
                     Token {
                         src: self.src_double(),
-                        // val: None,
                         kind: TokKind::LCurlyDollar,
                     }
                 }
                 _ => {
-                    let _ = self.take();
+                    self.take();
                     Token {
                         src: self.src_single(),
                         kind: TokKind::LCurly,
                     }
                 }
             },
-            b'"' => match self.peek_n(1) {
+            b'}' => match self.peek_n(1) {
                 Some(b'}') => {
                     self.take();
                     self.take();
                     Token {
                         src: self.src_double(),
-                        kind: TokKind::RCurlyDQuote,
+                        kind: TokKind::RCurlyDouble,
                     }
                 }
                 _ => {
                     self.take();
-                    let tok = Token {
+                    Token {
                         src: self.src_single(),
-                        // val: None,
-                        kind: TokKind::OpenerDQuote,
-                    };
-                    let st = self.lx_str(true)?;
-                    self.cx.pending.push(st);
-                    self.take();
-                    self.cx.pending.push(Token {
-                        src: self.src_single(),
-                        // val: None,
-                        kind: TokKind::CloserDQuote,
-                    });
-                    tok
+                        kind: TokKind::RCurly,
+                    }
+                }
+            }
+            b'"' => {
+                self.take();
+                let src = self.src_single();
+
+                let string = self.lx_str(true)?;
+                self.cx.pending.push(string);
+
+                self.take();
+                self.cx.pending.push(Token {
+                    src: self.src_single(),
+                    kind: TokKind::CloserDQuote,
+                });
+
+                Token {
+                    src,
+                    kind: TokKind::OpenerDQuote,
                 }
             },
             b'$' => match self.peek_n(1) {
@@ -153,7 +211,6 @@ impl<'a> Lexer<'a> {
                     self.take();
                     Token {
                         src: self.src_double(),
-                        // val: None,
                         kind: TokKind::RCurlyDollar,
                     }
                 }
@@ -161,19 +218,12 @@ impl<'a> Lexer<'a> {
                     self.take();
                     Token {
                         src: self.src_single(),
-                        // val: None,
                         kind: TokKind::from(ch),
                     }
                 }
                 None => return Err(self.err(LxErrKind::UnexpectedEOF, self.cx.ix)),
             },
             ch => {
-                // println!(
-                //     "Tok: {}, Position: {}, Length: {}",
-                //     ch as char,
-                //     self.cx.ix,
-                //     self.src.len()
-                // );
                 self.take();
                 Token {
                     src: if self.src.len() == 0 {
@@ -181,7 +231,6 @@ impl<'a> Lexer<'a> {
                     } else {
                         self.src_single()
                     },
-                    // val: None,
                     kind: TokKind::from(ch),
                 }
             }
@@ -194,7 +243,7 @@ impl<'a> Lexer<'a> {
         while let Some(ch) = self.peek() {
             let token_kind = match ch {
                 b'"' if raw_str => Some(TokKind::StringLit),
-                b'"' => match self.peek_n(1) {
+                b'}' => match self.peek_n(1) {
                     Some(b'}') => Some(TokKind::StringLit),
                     _ => None,
                 },
@@ -202,6 +251,18 @@ impl<'a> Lexer<'a> {
                     Some(b'$') => Some(TokKind::StringLit),
                     _ => None,
                 },
+                b'@' => {
+                    self.take();
+                    let next = self.lx_ident()?;
+                    tilog::info!(lex, "Next: `{}`", next.val());
+                    match next.kind {
+                        TokKind::For 
+                        | TokKind::If 
+                        | TokKind::Else 
+                        | TokKind::ElseIf => Some(next.kind),
+                        _ => None
+                    }
+                }
                 _ => None,
             };
             let buf = &self.src[six..self.cx.ix];
@@ -217,10 +278,25 @@ impl<'a> Lexer<'a> {
         Err(self.err(LxErrKind::UnterminatedString, six))
     }
 
+
+    #[rustfmt::skip]
     fn lx_ident(&mut self) -> Result<Token<'a>, Trace<'a, LxErr>> {
         let six = self.cx.ix;
+        let is_num = |ch| b'0' <= ch && ch <= b'9' 
+            || ch == b'.';
+        let is_ident = |ch| b'a' <= ch && ch <= b'z' 
+            || b'A' <= ch && ch <= b'Z' 
+            || ch == b'_' 
+            || ch == b'.';
+
+        if let Some(ch) = self.peek() {
+            if is_ident(ch) {
+                self.take();
+            }
+        }
+
         while let Some(ch) = self.peek() {
-            if !(b'a' <= ch && ch <= b'z' || b'A' <= ch && ch <= b'Z' || ch == b'_') {
+            if !(is_ident(ch) || is_num(ch)) {
                 break;
             }
             self.take();
@@ -231,7 +307,6 @@ impl<'a> Lexer<'a> {
 
         Ok(Token::<'a> {
             src: self.src(&buf),
-            // val: Some(val),
             kind: TokKind::from(val),
         })
     }
@@ -248,8 +323,7 @@ impl<'a> Lexer<'a> {
         let buf = &self.src[six..self.cx.ix];
         Ok(Token {
             src: self.src(&buf),
-            // val: Some(std::str::from_utf8(buf).unwrap()),
-            kind: TokKind::Int,
+            kind: TokKind::IntLit,
         })
     }
 
@@ -264,17 +338,6 @@ impl<'a> Lexer<'a> {
         Some(ch)
     }
 
-    // fn take_or(&mut self, kind: LxErrKind) -> Result<u8, Trace<'a, LxErr>> {
-    //     self.take().ok_or(self.err(kind, self.pos.ix))
-    // }
-
-    // fn take_char(&mut self) -> Option<char> {
-    //     let ch = self.peek_char()?;
-    //     let len = ch.len_utf8();
-    //     self.pos.ix += len;
-    //     Some(ch)
-    // }
-
     fn peek(&self) -> Option<u8> {
         if self.cx.ix >= self.src.len() {
             return None;
@@ -282,27 +345,12 @@ impl<'a> Lexer<'a> {
         Some(self.src[self.cx.ix])
     }
 
-    // fn peek_char(&self) -> Option<char> {
-    //     let rem = &self.src[self.pos.ix..];
-    //     match std::str::from_utf8(&rem[..std::cmp::min(4, rem.len())]) {
-    //         Ok(s) => s.chars().next(),
-    //         Err(_) => None,
-    //     }
-    // }
-
     fn peek_n(&self, n: usize) -> Option<u8> {
         if self.cx.ix + n >= self.src.len() {
             return None;
         }
         Some(self.src[self.cx.ix + n])
     }
-
-    // fn peek_or(&self, kind: LxErrKind) -> Result<u8, Trace<'a, LxErr>> {
-    //     let res = self.peek();
-    //     println!("{:#?}", res.unwrap_or(b'?') as char);
-    //     res.ok_or(self.err(kind, self.pos.ix))
-    //     self.peek().ok_or(self.err(kind, self.pos.ix))
-    // }
 
     fn err(&self, kind: LxErrKind, six: usize) -> Trace<'a, LxErr> {
         let src = self.src(&self.src[six..self.cx.ix]);
@@ -361,4 +409,48 @@ impl<'a> Lexer<'a> {
             self.take();
         }
     }
+}
+
+#[cfg(test)]
+mod lexer_tests {
+    use super::*;
+
+    #[test]
+    fn test_symbols() {
+        let src = "!@#$()[]{},.;:=";
+        let mut lx = Lexer::new(src.as_bytes());
+        let toks = lx.lex().unwrap();
+        assert_eq!(toks.len(), src.len());
+        for (i, tok) in toks.iter().enumerate() {
+            assert_eq!(tok.src.buf[0], src.as_bytes()[i]);
+        }
+    }
+
+    #[test]
+    fn test_idents() {
+        let src =
+            "abc def ghi jkl mno pqr stu vwx yz ABC DEF GHI JKL MNO PQR STU VWX YZ _ _a _0 _a0";
+        let inp = src.split(' ').into_iter().collect::<Vec<&str>>();
+        let mut lx = Lexer::new(src.as_bytes());
+        let toks = lx.lex().unwrap();
+        println!("{:#?}", toks);
+        assert_eq!(toks.len(), inp.len());
+        for (i, tok) in toks.iter().enumerate() {
+            assert!(tok.val() == inp[i], "[{}]", tok);
+        }
+    }
+
+    #[test]
+    fn test_keywords() {
+        let src = "main let dir file req for in if else elseif str list";
+        let inp = src.split(' ').into_iter().collect::<Vec<&str>>();
+        let mut lx = Lexer::new(src.as_bytes());
+        let toks = lx.lex().unwrap();
+        println!("{:#?}", toks);
+        assert_eq!(toks.len(), inp.len());
+        for (i, tok) in toks.iter().enumerate() {
+            assert!(tok.val() == inp[i], "[{}]", tok);
+        }
+    }
+    
 }

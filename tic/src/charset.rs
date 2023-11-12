@@ -17,12 +17,12 @@ pub fn is_ws(c: u8) -> bool {
 pub fn is_ident(st: &str) -> bool {
     let mut chars = st.chars();
     if let Some(ch) = chars.next() {
-        if !ch.is_alphabetic() && ch != '_' {
+        if !ch.is_alphabetic() && ch != '_' && ch != '.' {
             return false;
         }
     }
     while let Some(ch) = chars.next() {
-        if !ch.is_alphanumeric() && ch != '_' {
+        if !ch.is_alphanumeric() && ch != '_' && ch != '.' {
             return false;
         }
     }

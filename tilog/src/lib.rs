@@ -26,29 +26,29 @@ static mut CONF: Config = default_config();
 
 pub fn init_logger(conf: Config) {
     INIT.call_once(|| {
-        dotenv::dotenv().ok();
-        let level = match std::env::var("LOG_LEVEL")
-            .as_deref()
-            .map(str::to_lowercase)
-            .as_deref()
-        {
-            Ok("debug") => Level::Debug,
-            Ok("info") => Level::Info,
-            Ok("warn") => Level::Warn,
-            Ok("error") => Level::Error,
-            _ => Level::default(),
-        };
+        // dotenv::dotenv().ok();
+        // let level = match std::env::var("LOG_LEVEL")
+        //     .as_deref()
+        //     .map(str::to_lowercase)
+        //     .as_deref()
+        // {
+        //     Ok("debug") => Level::Debug,
+        //     Ok("info") => Level::Info,
+        //     Ok("warn") => Level::Warn,
+        //     Ok("error") => Level::Error,
+        //     _ => Level::default(),
+        // };
 
         unsafe {
             #[cfg(feature = "mt")]
             {
                 *CONF.lock().unwrap() = conf;
-                CONF.lock().unwrap().level = level;
+                // CONF.lock().unwrap().level = level;
             }
             #[cfg(not(feature = "mt"))]
             {
                 CONF = conf;
-                CONF.level = level;
+                // CONF.level = level;
             }
         }
         info!("Logging initialized")
@@ -124,7 +124,7 @@ impl Default for Config {
         Config {
             color: ColorConfig::default(),
             style: StyleConfig::default(),
-            level: Level::default(),
+            level: get_level(),
             emoji: false,
         }
     }
@@ -178,14 +178,36 @@ const fn default_style_config() -> StyleConfig {
     }
 }
 
-#[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Default, Copy, PartialEq, Eq, Clone, Debug)]
 pub enum Level {
     #[default]
-    Info,
     Debug,
+    Info,
+    Success,
     Warn,
     Error,
-    Success,
+}
+
+impl PartialOrd for Level {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        let ord = match (self, other) {
+            (Level::Debug, Level::Debug) => std::cmp::Ordering::Equal,
+            (Level::Debug, _) => std::cmp::Ordering::Greater,
+            (Level::Info, Level::Info) => std::cmp::Ordering::Equal,
+            (Level::Info, Level::Debug) => std::cmp::Ordering::Less,
+            (Level::Info, _) => std::cmp::Ordering::Greater,
+            (Level::Success, Level::Success) => std::cmp::Ordering::Equal,
+            (Level::Success, Level::Debug) => std::cmp::Ordering::Less,
+            (Level::Success, Level::Info) => std::cmp::Ordering::Less,
+            (Level::Success, _) => std::cmp::Ordering::Greater,
+            (Level::Warn, Level::Warn) => std::cmp::Ordering::Equal,
+            (Level::Warn, Level::Error) => std::cmp::Ordering::Less,
+            (Level::Warn, _) => std::cmp::Ordering::Greater,
+            (Level::Error, Level::Error) => std::cmp::Ordering::Equal,
+            (Level::Error, _) => std::cmp::Ordering::Less,
+        };
+        Some(ord)
+    }
 }
 
 impl Level {
@@ -315,7 +337,7 @@ const fn reset_code(reset: Reset) -> &'static str {
 }
 
 pub fn dump<'a>(level: Level, stage: Stage, msg: std::fmt::Arguments) {
-    if get_level() <= level {
+    if get_level() >= level {
         let conf = unsafe {
             #[cfg(feature = "mt")]
             {

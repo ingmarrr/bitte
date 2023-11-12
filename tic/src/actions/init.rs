@@ -1,8 +1,9 @@
 use std::path::PathBuf;
 
 use crate::{
-    ast::{Ast, Dir, Expr, File, Lit},
+    ast::{Dir, Expr, File, Lit},
     err::ExecErr,
+    exec::dump::Dump,
 };
 
 #[rustfmt::skip]
@@ -21,9 +22,9 @@ pub fn init(name: Option<String>, publish: bool, local: bool, force: bool) {
         return;
     }
 
-    // let dir = res.unwrap();
-    // let body = Ast::Dir(dir).dump();
-    let body = String::new();
+    let dir = res.unwrap();
+    let body = dir.dump();
+    // let body = String::new();
     let fi = match std::fs::File::create(&format!("{}.ti", name)) {
         Ok(fi) => fi,
         Err(err) => {
@@ -55,9 +56,9 @@ fn into_dir(path: PathBuf, main: bool) -> Result<Dir, ExecErr> {
         let child = child?;
         let path = child.path();
         if path.is_dir() {
-            children.push(Ast::Dir(into_dir(path, false)?));
+            children.push(Expr::Lit(Lit::Dir(into_dir(path, false)?)));
         } else {
-            children.push(Ast::File(into_file(path)?));
+            children.push(Expr::Lit(Lit::File(into_file(path)?)));
         }
     }
     let name = path.file_name().unwrap().to_str().unwrap().to_string();
