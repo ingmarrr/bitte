@@ -1,5 +1,5 @@
 use clap::Parser;
-use tipis::actions::local::Local;
+use tic::actions::local::Local;
 
 #[derive(clap::Parser)]
 struct App {
@@ -51,11 +51,13 @@ enum Cmd {
         #[clap(short, long)]
         force: bool,
     },
+    #[clap(name = "check", alias = "c", about = "Check a template")]
     Check {
         #[clap(value_parser)]
         path: String,
     },
-    Drop {
+    #[clap(name = "del", alias = "d", about = "Delete a template")]
+    Del {
         #[clap(value_parser)]
         name: String,
     },
@@ -66,34 +68,34 @@ fn main() -> std::io::Result<()> {
 
     match app.cmd {
         Cmd::Init { name, publish } => {
-            tipis::init(name, publish, true, false);
+            tic::init(name, publish, true, false);
         }
         Cmd::Repl => {
-            tipis::repl();
+            tic::repl();
         }
         Cmd::Make { name, args } => {
-            let program_args = tipis::args(args);
+            let program_args = tic::args(args);
             if let None = program_args {
                 println!("Error: Invalid arguments");
                 return Ok(());
             }
-            tipis::make(name, program_args.unwrap());
+            tic::make(name, program_args.unwrap());
         }
         Cmd::Pub {
             name, path, force, ..
         } => {
             let local = true;
-            if !tipis::return_check(path.clone()) {
+            if !tic::return_check(path.clone()) {
                 println!("Error: Invalid template");
                 return Ok(());
             }
-            tipis::publish(name, path, local, force);
+            tic::publish(name, path, local, force);
         }
         Cmd::Check { path } => {
-            tipis::check(path);
+            tic::check(path);
         }
-        Cmd::Drop { name } => {
-            // tipis::drop(name);
+        Cmd::Del { name } => {
+            // tic::drop(name);
             let local = Local::new();
             if let Err(err) = local {
                 println!("Sqlite Error: {}", err);

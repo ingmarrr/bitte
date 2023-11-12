@@ -2,25 +2,14 @@
 # Files
 
 ```ti
-file test: "test.txt" {"hello world"};
 
-file test: "test.txt" "hello world";
+let hey(names: list) = {{
 
-file test: "test.txt" {"hello world"};
+    @for name in names {{
+        @if name == "kenobi" {{ General Kenobi!  }} 
+        @else {{ Hello There {$name$} }}
+    }}
 
-file test: "test.txt" "hello world";
+}}
 
-file foo: "voo.a"(bar: str) {"Hello {$bar$}"};
-
-file foo(bar: str): "voo.a" {$bar$};
-```
-
-# Directories
-
-```ti
-dir foo {
-    bar {
-        baz
-    }
-}
 ```

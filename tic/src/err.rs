@@ -58,6 +58,9 @@ pub enum ExecErr {
     #[error("Exec: InvalidArgument :: {0}")]
     InvalidArgument(String),
 
+    #[error("Exec: TypeHasNoAlias :: {0}")]
+    TypeHasNoAlias(String),
+
     #[error(transparent)]
     LxErr(#[from] LxErr),
 

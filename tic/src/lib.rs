@@ -1,26 +1,19 @@
 extern crate core;
 
+pub mod actions;
 pub mod ast;
+pub mod charset;
 pub mod consts;
 pub mod err;
 pub mod exec;
 pub mod fifo;
+pub mod lexer;
 pub mod stack;
 pub mod syntax;
 pub mod token;
-#[macro_use]
-pub mod log;
-pub mod actions;
-pub mod charset;
-pub mod lexer;
 
 use ast::Expr;
 use ast::Lit;
-use log::{Level, Logger};
-
-lazy_static::lazy_static! {
-    pub static ref LOGGER: Logger = Logger { level: Level::None };
-}
 
 pub use actions::check::check;
 pub use actions::check::return_check;

@@ -1,14 +1,11 @@
-use std::{
-    collections::HashMap,
-    io::{Error, Write},
-};
+use std::{collections::HashMap, io::Error};
 
 use crate::{
-    ast::{Ast, AstKind, Dir, Expr, File, Ty},
+    ast::{Ast, AstKind, Expr, Ty},
     err::ExecErr,
 };
 
-use self::{executable::Executable, resolve::Resolve};
+use self::executable::Executable;
 
 pub mod executable;
 pub mod resolve;
@@ -18,55 +15,10 @@ pub struct Exec;
 impl Exec {
     pub fn run(syms: &Syms, ast: Ast, args: Vec<(String, Expr)>) -> Result<(), ExecErr> {
         match ast {
-            Ast::File(file) => {
-                let _ = Self::file(syms, std::path::PathBuf::new(), file, args);
-            }
-            Ast::Dir(dir) => {
-                let _ = Self::dir(syms, dir, args);
-            }
+            Ast::File(file) => file.execute(syms, std::path::PathBuf::new(), args),
+            Ast::Dir(dir) => dir.execute(syms, "./".into(), args),
             _ => return Err(Error::new(std::io::ErrorKind::InvalidData, "Expected dir").into()),
         }
-        Ok(())
-    }
-
-    pub fn file(
-        syms: &Syms,
-        parent: std::path::PathBuf,
-        file: File,
-        args: Vec<(String, Expr)>,
-    ) -> Result<(), ExecErr> {
-        let path = file.path(parent.clone());
-        if !path.exists() {
-            let _ = std::fs::create_dir_all(parent.clone());
-        }
-        let mut fi = std::fs::File::create(path)?;
-        let body = Self::stringify_vec(syms, file.content, args)?;
-        let _ = fi.write_all(body.as_bytes());
-        Ok(())
-    }
-
-    pub fn dir(syms: &Syms, dir: Dir, args: Vec<(String, Expr)>) -> Result<(), ExecErr> {
-        dir.execute(syms, "./".into(), args)
-    }
-
-    fn stringify(
-        syms: &Syms,
-        expr: Expr,
-        scope_args: Vec<(String, Expr)>,
-    ) -> Result<String, ExecErr> {
-        expr.resolve::<String>(syms, &Ty::String, scope_args)
-    }
-
-    fn stringify_vec(
-        syms: &Syms,
-        exprs: Vec<Expr>,
-        args: Vec<(String, Expr)>,
-    ) -> Result<String, ExecErr> {
-        let mut buf = String::new();
-        for expr in exprs.into_iter() {
-            buf.push_str(&Self::stringify(syms, expr, args.clone())?);
-        }
-        Ok(buf)
     }
 }
 
@@ -150,20 +102,21 @@ impl Sym {
         }
     }
 
-    pub fn alias(&self) -> Option<String> {
-        match self.val {
-            Ast::Dir(ref d) => Some(d.alias.clone()),
-            Ast::File(ref f) => Some(f.alias.clone()),
-            _ => None,
-        }
-    }
+    // pub fn alias(&self) -> Option<String> {
+    //     match self.val {
+    //         Ast::Dir(ref d) => Some(d.alias.clone()),
+    //         Ast::File(ref f) => Some(f.alias.clone()),
+    //         Ast::Let(ref l) => Some(l.name.clone()),
+    //         _ => None,
+    //     }
+    // }
 
     pub fn name(&self) -> String {
         match self.val {
             Ast::Let(ref l) => l.name.clone(),
             Ast::Req(ref r) => r.name.clone(),
-            Ast::Dir(ref d) => d.path.to_str().unwrap().to_string(),
-            Ast::File(ref f) => f.path.clone(),
+            Ast::Dir(ref d) => d.alias.clone(),
+            Ast::File(ref f) => f.alias.clone(),
             Ast::Ref(ref r) => r.name.clone(),
             _ => unreachable!("A Literal cannot be inserted as a symbol."),
         }

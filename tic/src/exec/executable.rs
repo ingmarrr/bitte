@@ -44,11 +44,11 @@ impl Executable for Dir {
         parent: std::path::PathBuf,
         args: Vec<(String, Expr)>,
     ) -> Result<(), ExecErr> {
-        if !self.path.exists() {
-            std::fs::create_dir_all(&self.path)?;
+        let path = parent.join(&self.path);
+        if !path.exists() {
+            std::fs::create_dir_all(&path)?;
         }
 
-        let path = parent.join(&self.path);
         for child in self.children.into_iter() {
             match child {
                 Ast::File(file) => file.execute(syms, path.clone(), args.clone())?,

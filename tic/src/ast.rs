@@ -292,26 +292,6 @@ pub struct Ref {
     pub ty: Ty,
 }
 
-// impl Ref {
-//     pub fn dump(&self) -> String {
-//         let mut buf: String = match self.kind {
-//             AstKind::Dir => "@".into(),
-//             AstKind::File => "#".into(),
-//             AstKind::Let => "!".into(),
-//             AstKind::Req => "!".into(),
-//             AstKind::Lit => unreachable!(),
-//         };
-//         buf.push_str(&self.name);
-//         buf.push_str("(");
-//         for (name, expr) in self.args.iter() {
-//             buf.push_str(&format!("{}: {}", name, expr.dump()));
-//         }
-//         buf.push_str(")");
-
-//         buf
-//     }
-// }
-
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Lit {
     String(String),

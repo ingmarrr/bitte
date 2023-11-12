@@ -1,7 +1,6 @@
 use std::io::Write;
 
 use crate::{
-    ast::{self, Ast, Req, Ty},
     consts,
     err::ExecErr,
     exec::{Exec, Key, Scope, Sym, Syms},
@@ -11,7 +10,12 @@ use crate::{
 pub fn repl() {
     let mut inp = String::new();
     let mut buf = String::new();
-    println!("Tipis Repl");
+    tilog::init_logger(tilog::Config::default());
+    tilog::info!("Tipis Repl");
+    tilog::debug!("Tipis Repl");
+    tilog::warn!("Tipis Repl");
+    tilog::error!("Tipis Repl");
+    tilog::success!("Tipis Repl");
 
     let mut syms = Syms::new(Vec::new());
 
@@ -22,7 +26,6 @@ pub fn repl() {
         std::io::stdin().read_line(&mut inp).unwrap();
 
         inp = inp.trim().to_string();
-        // println!("{inp}");
 
         match run(&mut syms, &inp) {
             Res::None | Res::Commit => {
@@ -98,27 +101,23 @@ fn run(syms: &mut Syms, cmd: &str) -> Res {
             println!("{:#?}", parts);
             if parts.len() < 2 {
                 return Res::InvalidArgs;
-            } else if parts.len() > 2 {
-                for part in &parts[2..] {
-                    let arg_parts = part.split('=').collect::<Vec<&str>>();
-                    if arg_parts.len() != 2 {
-                        return Res::InvalidArgs;
-                    }
-                    let _ = syms.add(Sym {
-                        // main: false,
-                        // name: arg_parts[0].to_string(),
-                        // ty: Ty::String,
-                        // kind: AstKind::Lit,
-                        scope: Scope::Global,
-                        // reqs: Vec::new(),
-                        val: Ast::Req(Req {
-                            name: arg_parts[0].to_string(),
-                            ty: Ty::String,
-                            expr: arg_parts[1].to_string(),
-                        }),
-                    });
-                }
             }
+            // else if parts.len() > 2 {
+            //     for part in &parts[2..] {
+            //         let arg_parts = part.split('=').collect::<Vec<&str>>();
+            //         if arg_parts.len() != 2 {
+            //             return Res::InvalidArgs;
+            //         }
+            //         let _ = syms.add(Sym {
+            //             scope: Scope::Global,
+            //             val: Ast::Req(Req {
+            //                 name: arg_parts[0].to_string(),
+            //                 ty: Ty::String,
+            //                 expr: arg_parts[1].to_string(),
+            //             }),
+            //         });
+            //     }
+            // }
             let sym = syms.get(&Key(parts[1].to_string(), Scope::Global));
             println!("{:#?}", sym);
             if let None = sym {
@@ -126,22 +125,7 @@ fn run(syms: &mut Syms, cmd: &str) -> Res {
             }
             let sym = sym.unwrap();
 
-            let res = match sym {
-                Sym {
-                    val: ast::Ast::Dir(dir),
-                    ..
-                } => Exec::dir(&syms, dir.clone(), Vec::new()),
-                Sym {
-                    val: ast::Ast::File(file),
-                    ..
-                } => Exec::file(
-                    syms,
-                    std::path::PathBuf::from("examples"),
-                    file.clone(),
-                    Vec::new(),
-                ),
-                _ => return Res::InvalidArgs,
-            };
+            let res = Exec::run(syms, sym.val.clone(), Vec::new());
             println!("{:#?}", res);
             match res {
                 Ok(_) => Res::DidAction,

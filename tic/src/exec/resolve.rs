@@ -62,7 +62,6 @@ impl Resolve for Ref {
         } else {
             return Err(ExecErr::InvalidType(self.name, sym.ty().to_string()));
         };
-        println!("TYPE: {:#?}", resolve_to);
 
         match sym.val {
             Ast::Req(ref req) => O::try_from(Lit::String(req.expr.to_owned())),
@@ -76,7 +75,6 @@ impl Resolve for Ref {
             }
             Ast::Dir(ref dir) => O::try_from(Lit::Dir(dir.clone())),
             Ast::File(ref file) => O::try_from(Lit::File(file.clone())),
-            // Ast::Ref(ref _ref_) => Err(ExecErr::InvalidType(self.name, Ty::Unknown.to_string())),
             Ast::Ref(ref ref_) => ref_.clone().resolve(syms, &resolve_to, args),
         }
     }

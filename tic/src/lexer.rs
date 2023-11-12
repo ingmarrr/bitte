@@ -1,7 +1,7 @@
 use crate::charset::{is_vert_ws, is_ws};
 use crate::err::{LxErr, LxErrKind, Trace};
 use crate::fifo::Fifo;
-use crate::token::{Closer, Literal, Opener, Source, TokKind, Token};
+use crate::token::{Source, TokKind, Token};
 
 #[cfg_attr(test, derive(PartialEq))]
 #[derive(Debug, Clone)]
@@ -57,7 +57,8 @@ impl<'a> Lexer<'a> {
     pub fn next_token(&mut self) -> Result<Token<'a>, Trace<'a, LxErr>> {
         self.reset();
         let tok: Token<'a> = if self.cx.pending.has_some() {
-            println!(
+            tilog::debug!(
+                lex,
                 "Nexttoken (pending): {:#?}",
                 self.cx.pending.peek().unwrap().to_string()
             );
@@ -65,26 +66,17 @@ impl<'a> Lexer<'a> {
         } else {
             self.lx_tok()?
         };
-        println!("Nexttoken: {}", tok);
+        tilog::debug!(lex, "Nexttoken: {}", tok);
         Ok(tok)
     }
 
+    #[rustfmt::skip]
     pub fn try_lx_str(&mut self) -> Result<Token<'a>, Trace<'a, LxErr>> {
         self.reset();
-        if self.cx.pending.has_some() {
-            if let Ok(tok) = self.cx.pending.peek() {
-                if let TokKind::Literal(Literal::String) = tok.kind {
-                    return Ok(self.cx.pending.pop_sure());
-                }
-            }
+        if let Ok(Token { kind: TokKind::StringLit, .. }) = self.cx.pending.peek() {
+            return Ok(self.cx.pending.pop_sure());
         }
-        let tok = self.lx_str(false)?;
-        if let TokKind::Literal(Literal::String) = tok.kind {
-            Ok(tok)
-        } else {
-            self.reset();
-            Err(self.err(LxErrKind::InvalidToken, self.cx.ix))
-        }
+        self.lx_str(false)
     }
 
     pub fn reset(&mut self) {
@@ -105,8 +97,7 @@ impl<'a> Lexer<'a> {
 
                     let tok = Token {
                         src: self.src_double(),
-                        // val: None,
-                        kind: TokKind::Opener(Opener::LCurlyDQuote),
+                        kind: TokKind::LCurlyDQuote,
                     };
                     let st = self.lx_str(false)?;
                     let _ = self.cx.pending.push(st);
@@ -118,17 +109,14 @@ impl<'a> Lexer<'a> {
                     Token {
                         src: self.src_double(),
                         // val: None,
-                        kind: TokKind::Opener(Opener::LCurlyDollar),
+                        kind: TokKind::LCurlyDollar,
                     }
                 }
                 _ => {
-                    // println!("{:#?}", tok as char);
-                    // println!("{:#?}", t.unwrap() as char);
                     let _ = self.take();
                     Token {
                         src: self.src_single(),
-                        // val: None,
-                        kind: TokKind::Opener(Opener::LCurly),
+                        kind: TokKind::LCurly,
                     }
                 }
             },
@@ -138,8 +126,7 @@ impl<'a> Lexer<'a> {
                     self.take();
                     Token {
                         src: self.src_double(),
-                        // val: None,
-                        kind: TokKind::Closer(Closer::RCurlyDQuote),
+                        kind: TokKind::RCurlyDQuote,
                     }
                 }
                 _ => {
@@ -147,7 +134,7 @@ impl<'a> Lexer<'a> {
                     let tok = Token {
                         src: self.src_single(),
                         // val: None,
-                        kind: TokKind::Opener(Opener::DQuote),
+                        kind: TokKind::OpenerDQuote,
                     };
                     let st = self.lx_str(true)?;
                     self.cx.pending.push(st);
@@ -155,7 +142,7 @@ impl<'a> Lexer<'a> {
                     self.cx.pending.push(Token {
                         src: self.src_single(),
                         // val: None,
-                        kind: TokKind::Closer(Closer::DQuote),
+                        kind: TokKind::CloserDQuote,
                     });
                     tok
                 }
@@ -167,7 +154,7 @@ impl<'a> Lexer<'a> {
                     Token {
                         src: self.src_double(),
                         // val: None,
-                        kind: TokKind::Closer(Closer::RCurlyDollar),
+                        kind: TokKind::RCurlyDollar,
                     }
                 }
                 Some(ch) => {
@@ -206,13 +193,13 @@ impl<'a> Lexer<'a> {
 
         while let Some(ch) = self.peek() {
             let token_kind = match ch {
-                b'"' if raw_str => Some(TokKind::Literal(Literal::String)),
+                b'"' if raw_str => Some(TokKind::StringLit),
                 b'"' => match self.peek_n(1) {
-                    Some(b'}') => Some(TokKind::Literal(Literal::String)),
+                    Some(b'}') => Some(TokKind::StringLit),
                     _ => None,
                 },
                 b'{' => match self.peek_n(1) {
-                    Some(b'$') => Some(TokKind::Literal(Literal::String)),
+                    Some(b'$') => Some(TokKind::StringLit),
                     _ => None,
                 },
                 _ => None,
@@ -221,7 +208,6 @@ impl<'a> Lexer<'a> {
             if let Some(kind) = token_kind {
                 return Ok(Token {
                     src: self.src(&buf),
-                    // val: Some(self.try_to_str(buf)?),
                     kind,
                 });
             }
@@ -263,7 +249,7 @@ impl<'a> Lexer<'a> {
         Ok(Token {
             src: self.src(&buf),
             // val: Some(std::str::from_utf8(buf).unwrap()),
-            kind: TokKind::Literal(Literal::Int),
+            kind: TokKind::Int,
         })
     }
 
@@ -338,7 +324,7 @@ impl<'a> Lexer<'a> {
             bix: self.cx.ix - buf.len(),
             col: self.cx.col - buf.len(),
             line: self.cx.line,
-            src: &buf,
+            buf: &buf,
             len: buf.len(),
         }
     }
@@ -348,7 +334,7 @@ impl<'a> Lexer<'a> {
             bix: self.cx.ix - 2,
             col: self.cx.col - 2,
             line: self.cx.line,
-            src: &self.src[self.cx.ix - 2..self.cx.ix],
+            buf: &self.src[self.cx.ix - 2..self.cx.ix],
             len: 2,
         }
     }
@@ -358,7 +344,7 @@ impl<'a> Lexer<'a> {
             bix: self.cx.ix - 1,
             col: self.cx.col - 1,
             line: self.cx.line,
-            src: &self.src[self.cx.ix - 1..self.cx.ix],
+            buf: &self.src[self.cx.ix - 1..self.cx.ix],
             len: 1,
         }
     }
